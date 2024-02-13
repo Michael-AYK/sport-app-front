@@ -1,20 +1,38 @@
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View } from 'react-native';
+// import HomeScreen from './screens/HomeScreen';
+import { NavigationContainer } from '@react-navigation/native';
+import HomeStackNavigator from './navigations/HomeStackNavigator';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Provider } from 'react-redux';
+import store, { setTheme } from './redux/theme';
+import { getStoredTheme } from './utils/themeStorage';
 
 export default function App() {
+  useEffect(() => {
+    // Récupérer le thème stocké dans AsyncStorage
+    getStoredTheme().then((theme) => {
+      if (theme) {
+        store.dispatch(setTheme(theme));
+      }
+    });
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <Provider store={store}>
+      <GestureHandlerRootView style={styles.container}>
+        <NavigationContainer>
+          <StatusBar style="auto" />
+          <HomeStackNavigator />
+        </NavigationContainer>
+      </GestureHandlerRootView>
+    </Provider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1
   },
 });

@@ -1,0 +1,63 @@
+{
+  "project_info": {
+    "project_number": "859259628586",
+    "project_id": "padel-app-3d517",
+    "storage_bucket": "padel-app-3d517.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:859259628586:android:eea83985371c795c252753",
+        "android_client_info": {
+          "package_name": "com.micayokpon.padelbooking"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "859259628586-5bfraaqkncuqnnupinh2rrspmlhoaq0a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.micayokpon.padelbooking",
+            "certificate_hash": "e9ffadce9b43fd8a2e05ac03a500598eb8bd002a"
+          }
+        },
+        {
+          "client_id": "859259628586-cl03mk8ocv3srcp5vvmle9imoo05si64.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.micayokpon.padelbooking",
+            "certificate_hash": "40fa8b8460aa4793c507cc02614c741dbe1fc4e9"
+          }
+        },
+        {
+          "client_id": "859259628586-lbkch5bvtj1h3fc4mucqd5m6tilgm2qr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.micayokpon.padelbooking",
+            "certificate_hash": "2413cc203e7c06aa6ef55cdd78f269b83ce6ce60"
+          }
+        },
+        {
+          "client_id": "859259628586-6e55ek3809annlqo27abqqh57ai0cirm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfgKdBu2izfa8QmO9bvfs06iQark2_BxY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "859259628586-6e55ek3809annlqo27abqqh57ai0cirm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
