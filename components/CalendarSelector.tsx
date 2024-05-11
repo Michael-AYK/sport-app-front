@@ -1,11 +1,11 @@
 // CalendarSelector.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, Pressable, InteractionManager } from 'react-native';
 import { AntDesign } from '@expo/vector-icons';
 import CalendarPicker from 'react-native-calendar-picker';
 import Collapsible from 'react-native-collapsible';
 import { WeekData, CalendarSelectorProps } from './Types'; // Ajustez selon vos chemins d'importation
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, interpolate, Extrapolate, useDerivedValue, useAnimatedProps } from 'react-native-reanimated'
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, interpolate, Extrapolate, useDerivedValue, useAnimatedProps, interpolateColor } from 'react-native-reanimated'
 import AnimateableText from 'react-native-animateable-text';
 
 const WEEK_DAYS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
@@ -14,11 +14,23 @@ const MONTHS = ["Jan", "Fev", "Mar", "Avr", "Mai", "Jui", "Jui", "Aoû", "Sep", 
 
 const CalendarSelector: React.FC<CalendarSelectorProps> = ({ selectedDate, onDateChange, theme }) => {
   const [selectedDateDatas, setSelectedDateDatas] = useState<WeekData | null>(null);
-  const [selectedDateIndex, setSelectedDateIndex] = useState(2)
   const [displayCalendar, setDisplayCalendar] = useState(false);
   const minDate: Date = new Date();
   const positionX = useSharedValue(0);
-  const selectedDateIndexRef = useRef<number>(2);
+  const PRIMARY_COLOR_VALUE = 0;
+  const SECONDARY_COLOR_VALUE = 1;
+  const textColors = Array.from({ length: 5 }).map((_, i) => useSharedValue(i === 2 ? SECONDARY_COLOR_VALUE : PRIMARY_COLOR_VALUE));
+
+  // Création des styles animés
+  const animatedTextColorStyles = textColors?.map((colorVal) =>
+    useAnimatedStyle(() => ({
+      color: interpolateColor(
+        colorVal.value,
+        [PRIMARY_COLOR_VALUE, SECONDARY_COLOR_VALUE],
+        ['#444', '#fff']
+      )
+    }))
+  );
 
   const customDayHeaderStylesCallback = ({ dayOfWeek, month, year }: any) => {
     return {
@@ -87,21 +99,29 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({ selectedDate, onDat
   };
 
   const handleDayPress = async (date: Date, index: number) => {
+
     positionX.value = withSpring(index * (55 + 4));
+    textColors.forEach((textColor, i) =>
+      i !== index ?
+        textColor.value = withTiming(PRIMARY_COLOR_VALUE, { duration: 200 }) :
+        textColor.value = withTiming(SECONDARY_COLOR_VALUE, { duration: 200 })
+    )
+
+    setDisplayCalendar(false);
     InteractionManager.runAfterInteractions(() => {
-      setSelectedDateIndex(index);
       onDateChange(date);
-      setDisplayCalendar(false);
     });
   };
 
   const renderDayItems = () => {
     return selectedDateDatas?.weekDates.map((date, index) => {
-      const isSelectedDate = index === selectedDateIndex;
       const weekDayIndex = date.getDay();
       const currentWeekDay = WEEK_DAYS[weekDayIndex];
       const currentDateDay = date?.getDate();
       const currentMonth = MONTHS[date.getMonth()];
+
+
+
       return (
         <Pressable
           onPress={() => {
@@ -122,9 +142,15 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({ selectedDate, onDat
             backgroundColor: 'transparent',
             flex: 1
           }}>
-          <Text style={{ color: theme.primaryText, fontSize: 10, fontWeight: '300' }}>{currentWeekDay} </Text>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.primaryTextLight }}>{currentDateDay} </Text>
-          <Text style={{ fontSize: 10, color: theme.primaryTextLight }}>{currentMonth} </Text>
+          <Animated.Text style={[{ color: theme.primaryText, fontSize: 10, fontWeight: '300' }, textColors && animatedTextColorStyles[index]]}>
+            {currentWeekDay}
+          </Animated.Text>
+          <Animated.Text style={[{ fontSize: 16, fontWeight: '800', color: theme.primaryTextLight }, textColors && animatedTextColorStyles[index]]}>
+            {currentDateDay}
+          </Animated.Text>
+          <Animated.Text style={[{ fontSize: 10, color: theme.primaryTextLight }, textColors && animatedTextColorStyles[index]]}>
+            {currentMonth}
+          </Animated.Text>
         </Pressable>
       );
     });
@@ -153,7 +179,6 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({ selectedDate, onDat
         <View style={{ flexDirection: 'row', position: 'relative', marginLeft: 10, height: 65, alignItems: 'center', width: 295 }}>
           <Animated.View
             style={[{
-              zIndex: 2,
               justifyContent: 'center',
               alignItems: 'center',
               paddingVertical: 5,
