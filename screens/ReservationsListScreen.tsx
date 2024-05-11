@@ -1,40 +1,133 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Modal, TouchableOpacity, ImageBackground, Animated, Easing, FlatList, Image } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, Dimensions, ImageBackground, Image, Pressable, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import CalendarPicker from 'react-native-calendar-picker';
 import AntDesign from '@expo/vector-icons/AntDesign';
 import { useSelector, useDispatch } from 'react-redux';
-import { setTheme } from '../redux/theme';
-import { storeTheme } from '../utils/themeStorage';
 import lightTheme from '../themes/lightTheme';
 import darkTheme from '../themes/darkTheme';
-import { getReservationListByUserAndDate } from '../services/reservation';
+import { getUserReservations } from '../services/reservation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LottieView from "lottie-react-native";
-import terrains from '../helpers/terrains';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, interpolate, Extrapolate, withDelay, Easing } from 'react-native-reanimated'
+import { baseUrlPublic } from '../services/baseUrl';
+import moment from 'moment';
 
-const WEEK_DAYS = [
-  "Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"
-];
-const MONTHS = [
-  "Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
-];
+const { width, height } = Dimensions.get("window");
+
+const ReservationRow = ({ pastData, upcomingData, index, animateTo, theme, onReservationPress }: any) => {
+  const translateX = useSharedValue(animateTo === 'past' ? 0 : -width);
+
+  useEffect(() => {
+    const delay = index * 70; // Décalage basé sur l'index
+    const destination = animateTo === 'past' ? 0 : -width;
+
+    // Définir un timeout pour retarder l'exécution de l'animation
+    const timer = setTimeout(() => {
+      translateX.value = withSpring(destination, {
+        damping: 20, // Contrôle la résistance au mouvement (plus élevé = moins de "rebond")
+        stiffness: 90, // Contrôle la rigidité du ressort (plus élevé = animation plus rapide)
+        mass: 2, // Masse de l'objet animé, affecte la "lourdeur" de l'animation
+        velocity: 2, // Vitesse initiale de l'animation
+      });
+    }, delay);
+
+    // Nettoyer le timer si le composant est démonté avant que le timer se termine
+    return () => clearTimeout(timer);
+  }, [animateTo, index]);
 
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
-const ReservationsListScreen: React.FC = () => {
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedDateDatas, setSelectedDateDatas] = useState<any>(null);
-  const [displayReservationsForDay, setDisplayReservationsForDay] = useState(false);
+
+  return (
+    <Animated.View style={[{
+      flexDirection: 'row',
+      justifyContent: 'flex-start',
+      width: width * 2,
+      height: 70,
+      marginVertical: 5,
+    }, animatedStyle]}>
+      <TouchableOpacity onPress={() => onReservationPress(pastData.reservation_id)} style={{
+        width: width - 30,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: pastData.centre_sportif === undefined || pastData?.centre_sportif?.nom === null ? 'transparent' : theme.lightGreenTranslucent,
+        height: 70,
+        marginRight: 30,
+        borderRadius: 15,
+        opacity: pastData.centre_sportif === undefined || pastData?.centre_sportif?.nom === null ? 0 : 1
+      }}>
+        <Image source={{ uri: baseUrlPublic + pastData?.centre_sportif?.photo_couverture?.replace("public", "storage") }} style={{ width: '20%', height: 70, borderRadius: 8, objectFit: 'contain' }} />
+        <View style={{ width: '60%', marginLeft: '2%', paddingVertical: 5 }}>
+          <Text style={{ fontSize: 14, color: theme.primaryText, marginBottom: 5, fontWeight: '300', maxWidth: '90%' }} numberOfLines={2}>{pastData?.centre_sportif?.nom}</Text>
+          <Text style={{ fontSize: 12, color: theme.primaryTextLight }} numberOfLines={1}>{pastData?.centre_sportif?.adresse}</Text>
+        </View>
+
+        <View style={{ width: '20%', }}>
+          <Text style={{ fontSize: 10, fontWeight: '500', marginBottom: 8 }}>{pastData?.date_reservation}</Text>
+          <Text style={{ fontSize: 10, fontWeight: '300' }}>{pastData?.heure_debut}</Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => onReservationPress(upcomingData.reservation_id)} style={{
+        width: width - 30,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: upcomingData.centre_sportif === undefined || upcomingData?.centre_sportif?.nom === null ? 'transparent' : theme.lightGreenTranslucent,
+        height: 70,
+        borderRadius: 15,
+        opacity: upcomingData.centre_sportif === undefined || upcomingData?.centre_sportif?.nom === null ? 0 : 1
+      }}>
+        <Image source={{ uri: baseUrlPublic + upcomingData?.centre_sportif?.photo_couverture?.replace("public", "storage") }} style={{ width: '20%', height: 70, borderRadius: 8, objectFit: 'contain' }} />
+        <View style={{ width: '60%', marginLeft: '2%', paddingVertical: 5 }}>
+          <Text style={{ fontSize: 14, color: theme.primaryText, marginBottom: 5, fontWeight: '300', maxWidth: '90%' }} numberOfLines={2}>{upcomingData?.centre_sportif?.nom}</Text>
+          <Text style={{ fontSize: 12, color: theme.primaryTextLight }} numberOfLines={1}>{upcomingData?.centre_sportif?.adresse}</Text>
+        </View>
+
+        <View style={{ width: '20%', }}>
+          <Text style={{ fontSize: 10, fontWeight: '500', marginBottom: 8 }}>{upcomingData?.date_reservation}</Text>
+          <Text style={{ fontSize: 10, fontWeight: '300' }}>{upcomingData?.heure_debut}</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const ReservationsListScreen: React.FC = (props: any) => {
   const [loading, setLoading] = useState(true);
   const [dbUser, setDbUser] = useState<any>(null);
-  const [reservationList, setReservationList] = useState([]);
-  const calendarOpacity = useRef(new Animated.Value(1)).current;
-  const reservationsOpacity = useRef(new Animated.Value(0)).current;
-  const calendarTranslateY = useRef(new Animated.Value(0)).current;
-  const reservationsTranslateY = useRef(new Animated.Value(-100)).current;
+  const [pastReservations, setPastReservations] = useState<any>([])
+  const [upcomingReservations, setUpcomingReservations] = useState<any>([])
+  const translateX = useSharedValue(0);
+  const [reservationsForToday, setReservationsForToday] = useState([]);
+
+  // Calculez la largeur de la vue animée
+  const animatedViewWidth = (width - 30) / 2;
   const mode = useSelector((state: any) => state.theme);
   const theme = mode === 'light' ? lightTheme : darkTheme;
+  const currentMonth = moment().format('MMMM'); // 'MMMM' pour le nom complet du mois
+  const currentDay = moment().format('DD'); // 
+
+  const [animateTo, setAnimateTo] = useState('past');
+  const longestListLength = Math.max(pastReservations.length, upcomingReservations.length);
+  const combinedReservations = Array.from({ length: longestListLength }).map((_, index) => ({
+    pastData: pastReservations[index] ? pastReservations[index] : {},
+    upcomingData: upcomingReservations[index] ? upcomingReservations[index] : {},
+  }));
+
+
+  useEffect(() => {
+    const today = moment().format('YYYY-MM-DD'); // Assurez-vous que le format correspond à celui de vos dates de réservation
+    const filteredReservations = upcomingReservations.filter((reservation: any) => {
+      return moment(reservation.date_reservation).format('YYYY-MM-DD') === today
+    }
+    );
+    console.log(filteredReservations);
+
+    setReservationsForToday(filteredReservations);
+  }, [upcomingReservations]);
 
   const ShadowView = ({ children }: any) => (
     <View style={{
@@ -52,119 +145,6 @@ const ReservationsListScreen: React.FC = () => {
     </View>
   );
 
-  const customDayHeaderStylesCallback = ({ dayOfWeek, month, year }: any) => {
-    return {
-      textStyle: {
-        color: theme.primaryText,
-        fontSize: 13,
-        fontWeight: '300'
-      }
-    };
-  };
-
-  const handleDateChange = async (date: Date) => {
-    setLoading(true)
-    console.log(date);
-    console.log(new Date(date)?.toLocaleDateString());
-    const reservations = await getReservationListByUserAndDate(dbUser?.id || 12, (new Date(date))?.toLocaleDateString());
-    console.log(reservations);
-    setReservationList(reservations);
-    const result = getWeekData(date);
-    setSelectedDateDatas(result);
-
-    setSelectedDate(date);
-
-    // Reset the animations before starting
-    calendarOpacity.setValue(1);
-    reservationsOpacity.setValue(0);
-    calendarTranslateY.setValue(0);
-    reservationsTranslateY.setValue(100);
-
-    setLoading(false)
-    Animated.parallel([
-      Animated.timing(calendarOpacity, {
-        toValue: 0,
-        duration: 400,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
-      Animated.timing(calendarTranslateY, {
-        toValue: -100,
-        duration: 400,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
-      Animated.timing(reservationsOpacity, {
-        toValue: 1,
-        duration: 400,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
-      Animated.timing(reservationsTranslateY, {
-        toValue: 0,
-        duration: 400,
-        easing: Easing.ease,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setDisplayReservationsForDay(true));
-  };
-
-  const handleReturnClick = () => {
-    // Reset the animations before starting
-    calendarOpacity.setValue(0);
-    reservationsOpacity.setValue(1);
-    calendarTranslateY.setValue(-100);
-    reservationsTranslateY.setValue(0);
-
-    Animated.parallel([
-      Animated.timing(calendarOpacity, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(calendarTranslateY, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(reservationsOpacity, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(reservationsTranslateY, {
-        toValue: 100,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setDisplayReservationsForDay(false));
-  };
-
-  function getWeekData(inputDate: Date) {
-    const date = new Date(inputDate);
-    const dayOfWeek = date.getUTCDay();
-    const mondayDate = new Date(date);
-    mondayDate.setUTCDate(date.getUTCDate() - dayOfWeek);
-    const weekDates = [mondayDate];
-
-    for (let i = 1; i < 7; i++) {
-      const nextDate = new Date(mondayDate);
-      nextDate.setUTCDate(mondayDate.getUTCDate() + i);
-
-      // Vérifiez si le mois de la date correspond au mois de la date sélectionnée
-      if (nextDate.getUTCMonth() === date.getUTCMonth()) {
-        weekDates.push(nextDate);
-      }
-    }
-
-    const dateDay = date.getDate();
-    const dateMonth = date.getUTCMonth();
-    const dateYear = date.getUTCFullYear();
-    const monthName = MONTHS[dateMonth];
-
-    return { dateDay, weekDates, monthName, dateYear };
-  }
-
   useEffect(() => {
     onLoad()
   }, [])
@@ -175,20 +155,59 @@ const ReservationsListScreen: React.FC = () => {
     if (userStr) {
       const { client } = JSON.parse(userStr)
       setDbUser(client);
-    }
-    setTimeout(() => {
+      loadReservations(client.email).finally(() => {
+        setLoading(false);
+      });
+    } else {
       setLoading(false);
-    }, 2000);
+      Alert.alert("Veuillez-vous inscrire")
+    }
+  }
+
+  async function loadReservations(email: string) {
+    const foundedReservations = await getUserReservations(email);
+    setPastReservations(foundedReservations?.past_reservations)
+    setUpcomingReservations(foundedReservations?.upcoming_reservations)
+  }
+
+  const moveToPassed = () => {
+    // Déplacez l'Animated.View vers la gauche
+    translateX.value = withSpring(5, {
+      damping: 10, // Plus élevé pour moins de rebond
+      stiffness: 120, // Ajuster selon besoin pour la "dureté" de l'animation
+      velocity: 2
+    });
+    setAnimateTo("past")
+  };
+
+  const moveToUpcoming = () => {
+    // Déplacez l'Animated.View vers la droite
+    translateX.value = withSpring(animatedViewWidth - 5, {
+      damping: 10, // Plus élevé pour moins de rebond
+      stiffness: 120, // Ajuster selon besoin
+      velocity: 2
+    });
+    setAnimateTo("upcoming")
+  };
+
+  const animatedListHeadStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
+
+  function navigateToReservationDetails(reservationId: number) {
+    props.navigation.navigate("ReservationDetailScreen", { reservationId })
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.primaryBackground }}>
 
-      <Animated.View style={{ opacity: calendarOpacity, zIndex: !displayReservationsForDay ? 2 : 1, transform: [{ translateY: calendarTranslateY }] }}>
-        <View style={{ justifyContent: 'center', alignItems: 'center', width: '100%', marginBottom: 40 }}>
+      <View style={{}}>
+        <View style={{ justifyContent: 'center', alignItems: 'center', width: '100%', marginBottom: 10 }}>
           <ShadowView>
             <LinearGradient
-              colors={['#4B0082', '#4A1082']}
+              colors={['#58AF83', '#5AAF93']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={{
@@ -198,97 +217,97 @@ const ReservationsListScreen: React.FC = () => {
               <ImageBackground
                 source={require("../assets/images/shapes.png")}
                 imageStyle={{ opacity: 0.2 }}
-                style={{ padding: 10 }}>
+                style={{ padding: 10 }}
+              >
                 <TouchableOpacity style={{ flexDirection: 'row', width: '100%', justifyContent: 'center', alignItems: 'center', padding: 10 }}>
                   <View style={{ marginRight: 25, alignItems: 'flex-start' }}>
-                    <Text style={{ fontSize: 18, color: '#ddd' }}>Octobre</Text>
-                    <Text style={{ fontSize: 30, color: '#fff', fontWeight: '800' }}>18</Text>
+                    <Text style={{ fontSize: 18, color: '#eee', textTransform: 'capitalize' }}>{currentMonth}</Text>
+                    <Text style={{ fontSize: 30, color: '#fff', fontWeight: '800' }}>{currentDay}</Text>
                   </View>
-                  <Text style={{ color: '#ddd', fontSize: 14, lineHeight: 19, maxWidth: '65%', fontWeight: '300' }}>Aucune réservation prévue pour aujourd'hui</Text>
+                  {reservationsForToday.length > 0 ? (
+                    <Text style={{ color: '#fff', fontSize: 14, lineHeight: 19, maxWidth: '65%', fontWeight: '300' }}>
+                      Vous avez {reservationsForToday.length} réservation(s) pour aujourd'hui
+                    </Text>
+                  ) : (
+                    <Text style={{ color: '#fff', fontSize: 14, lineHeight: 19, maxWidth: '65%', fontWeight: '300' }}>
+                      Aucune réservation prévue pour aujourd'hui
+                    </Text>
+                  )}
                 </TouchableOpacity>
               </ImageBackground>
             </LinearGradient>
           </ShadowView>
         </View>
-        <CalendarPicker
-          onDateChange={handleDateChange}
-          weekdays={WEEK_DAYS}
-          months={MONTHS}
-          dayLabelsWrapper={{ borderTopWidth: 0, borderBottomWidth: 0, paddingBottom: 0 }}
-          customDayHeaderStyles={customDayHeaderStylesCallback}
-          previousComponent={<AntDesign name="left" size={20} color={theme.primaryText} />}
-          nextComponent={<AntDesign name="right" size={20} color={theme.primaryText} />}
-          monthTitleStyle={{ fontSize: 18, fontWeight: "800" }}
-          yearTitleStyle={{ fontSize: 18, fontWeight: "800" }}
-          selectedDayStyle={{ backgroundColor: theme.primaryLight }}
-          textStyle={{ color: theme.primaryText }}
-        />
-      </Animated.View>
 
+        <View style={{ flex: 1, padding: 15 }}>
+          <View style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            width: width - 30,
+            height: 50,
+            borderRadius: 15,
+            padding: 5,
+            backgroundColor: theme.lightGreenTranslucent,
+            position: 'relative',
+            marginBottom: 15
+          }}>
+            <Animated.View
+              style={[{
+                width: (width - 30) / 2,
+                borderRadius: 15,
+                height: '100%',
+                backgroundColor: 'rgb(230, 230, 230)',
+                position: 'absolute',
+              }, animatedListHeadStyle]}
+            />
+            <Pressable style={{
+              width: (width - 30) / 2,
+              height: '100%',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+              onPress={moveToPassed}>
+              <Text>Passées</Text>
+            </Pressable>
 
-      <Animated.View style={{ flex: 1, position: 'absolute', zIndex: 1, padding: 10, left: 0, right: 0, top: 0, opacity: reservationsOpacity, transform: [{ translateY: reservationsTranslateY }] }}>
-        <View style={{ width: '100%', marginBottom: 15 }}>
-          <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 10, color: theme.primaryTextLight }}>{selectedDateDatas?.monthName} {selectedDateDatas?.dateYear} </Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            {
-              Array.from({ length: 7 }, (_, i) => i).map((d, i) => {
-                return <TouchableOpacity key={i} style={{
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  borderWidth: selectedDateDatas?.weekDates[i]?.getUTCDate() === selectedDateDatas?.dateDay ? 2 : 0,
-                  paddingVertical: 10,
-                  paddingHorizontal: 5,
-                  borderRadius: 30,
-                  borderColor: theme.primaryLight,
-                  opacity: selectedDateDatas?.weekDates[i]?.getUTCDate() ? 1 : 0
-                }}>
-                  <Text style={{ color: theme.primaryTextLighter, fontSize: 13, fontWeight: '300', marginBottom: 10 }}>{WEEK_DAYS[i]} </Text>
-                  <Text style={{ color: theme.primaryTextLight }}>{selectedDateDatas?.weekDates[i]?.getUTCDate()} </Text>
-                </TouchableOpacity>
-              })
-            }
+            <Pressable style={{
+              width: (width - 30) / 2,
+              height: '100%',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+              onPress={moveToUpcoming}>
+              <Text>A venir</Text>
+            </Pressable>
+          </View>
+
+          {/* Réservations list */}
+          <View style={{ flex: 1 }}>
+            {combinedReservations.map((reservation, index) => {
+              return <ReservationRow
+                key={index}
+                pastData={reservation.pastData}
+                upcomingData={reservation.upcomingData}
+                index={index}
+                animateTo={animateTo}
+                theme={theme}
+                onReservationPress={navigateToReservationDetails}
+              />
+            })}
           </View>
         </View>
 
-        <View style={{ width: '100%', justifyContent: 'center', alignItems: 'center', marginBottom: 15 }}>
-          <AntDesign name="down" size={20} color={theme.primaryText} onPress={() => handleReturnClick()} style={{ padding: 10 }} />
-        </View>
+      </View>
 
-        <FlatList
-          data={reservationList}
-          keyExtractor={(item, index) => index.toString()}
-          contentContainerStyle={{ marginBottom: 50 }}
-          renderItem={({ item, index }: any) => {
-            return <View style={{ width: '100%', flexDirection: 'row', marginVertical: 10, paddingVertical: 8, backgroundColor: theme.lightGreenTranslucent }}>
-              <Image
-                source={{ uri: terrains.find((terrain, index) => terrain.id === item?.court_id)?.image_url }}
-                style={{ width: 50, height: 50, borderRadius: 5 }} />
-              <View style={{ marginLeft: 15 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: theme.primaryText }}>{terrains.find((terrain, index) => terrain.id === item?.court_id)?.nom}</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 }}>
-                  {
-                    item.reservation_hours.map((hr: any, index: number) => {
-                      return <View key={`hr-${index}`} style={{ paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: 3, borderRadius: 8, backgroundColor: theme.primary }}>
-                        <Text style={{ color: theme.primaryBackground }}>{hr.heure}</Text>
-                      </View>
-                    })
-                  }
-                </View>
-              </View>
-            </View>
-          }}
-        />
 
-        <View style={{ height: 50 }} />
-      </Animated.View>
-
-      <Modal visible={loading}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Modal visible={loading} transparent>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .5)' }}>
           <LottieView
             autoPlay
             style={{ height: 100, width: 100 }}
             loop
-            source={require('../assets/lotties/loader.json')}
+            source={require('../assets/lotties/loading-2.json')}
           />
         </View>
       </Modal>

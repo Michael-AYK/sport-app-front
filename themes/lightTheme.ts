@@ -1,9 +1,9 @@
 
 const lightTheme = {
-    primaryBackground: 'rgb(245, 247, 245)',
-    primary: '#4B0082',
-    primaryText: '#333333',
-    primaryTextLight: '#999999',
+    primaryBackground: 'rgb(245, 249, 245)',
+    primary: '#58AF83',
+    primaryText: '#333633',
+    primaryTextLight: '#999C99',
     primaryTextLighter: '#aaaaaa',
     primaryLight: '#999',
     lightGreenTranslucent: 'rgba(210, 230, 215, 0.25)',

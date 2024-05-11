@@ -26,8 +26,11 @@ const GoogleSignInModal = ({ isVisible, onClose }: any) => {
 
   const signIn = async () => {
     try {
+      console.log("TEST !")
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
+      console.log("USER FOUND");
+      
       console.log(userInfo);
 
       // Stockage des informations de l'utilisateur dans AsyncStorage
@@ -35,12 +38,19 @@ const GoogleSignInModal = ({ isVisible, onClose }: any) => {
 
       // Exécution de registerUser avec le nom et l'email
       const { name, email } = userInfo.user;
+      console.log(name)
+      console.log(email)
+      console.log("=============")
       if(name && email) {
         const resp = await registerUser(name, email);
+        console.log("HEY");
+        console.log("rrrrrrrrrrrrrrrrrrr");
+        
         console.log(resp);
         onClose()
       }
     } catch (error: any) {
+      console.log(error)
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         // user cancelled the login flow
       } else if (error.code === statusCodes.IN_PROGRESS) {

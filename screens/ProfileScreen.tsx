@@ -11,17 +11,19 @@ import lightTheme from '../themes/lightTheme';
 import darkTheme from '../themes/darkTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LottieView from "lottie-react-native";
+import { getReceivedInvitations } from '../services/reservation';
 
 export default function ProfileScreen(props: any) {
   const mode = useSelector((state: any) => state.theme);
-  const theme = mode === 'light'? lightTheme: darkTheme;
+  const theme = mode === 'light' ? lightTheme : darkTheme;
   const dispatch = useDispatch();
 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbUser, setDbUser] = useState<any>(null);
+  const [receivedInvitations, setReceivedInvitations] = useState([]);
 
-  
+
   async function onAppThemePress(selectedMode: boolean) {
     const newTheme = mode === 'light' ? 'dark' : 'light';
 
@@ -30,13 +32,13 @@ export default function ProfileScreen(props: any) {
 
     // Enregistrer le nouveau thème dans AsyncStorage
     storeTheme(newTheme);
-    
+
     setIsDarkMode(selectedMode)
   }
 
   useEffect(() => {
     onLoad();
-  },[])
+  }, [])
 
   async function onLoad() {
     setLoading(true);
@@ -44,12 +46,15 @@ export default function ProfileScreen(props: any) {
     if (userStr) {
       const { client } = JSON.parse(userStr)
       setDbUser(client);
+      onLoadReceivedInvitations(client);
     }
-    setTimeout(() => {
-      setLoading(false);
-    }, 2000);
+    setLoading(false);
   }
 
+  async function onLoadReceivedInvitations(client: any) {
+    const receivedInvitations = await getReceivedInvitations(client.email);
+    setReceivedInvitations(receivedInvitations);
+  }
 
   const onWhatsappToggle = () => {
     Linking.canOpenURL('whatsapp://send?text=hey').then(supported => {
@@ -59,6 +64,10 @@ export default function ProfileScreen(props: any) {
         Linking.openURL('whatsapp://send?text=Salut,\n Je suis un utilisateur de votre application&phone=+33667486871');
       }
     })
+  }
+
+  function navigateToInvitations() {
+    props.navigation.navigate("Invitations", { receivedInvitations })
   }
 
   return (
@@ -91,21 +100,28 @@ export default function ProfileScreen(props: any) {
             onValueChange={onAppThemePress}
             value={isDarkMode}
           />
-        </View>
+        </View> 
       </View>
 
-      <TouchableOpacity style={{ marginVertical: 10, padding: 8, borderRadius: 8, width: '100%', backgroundColor: 'rgba(200, 200, 220, .1)', alignItems: 'center', flexDirection: 'row' }}>
+      <TouchableOpacity onPress={navigateToInvitations} style={{ marginVertical: 10, padding: 8, borderRadius: 8, width: '100%', backgroundColor: 'rgba(200, 200, 220, .1)', alignItems: 'center', flexDirection: 'row' }}>
         <View style={{ height: 30, width: 40, justifyContent: 'center', alignItems: 'center' }}>
-          <AntDesign name="infocirlce" size={25} color={theme.primaryText} />
+          <FontAwesome name="users" size={20} color={theme.primaryText} />
         </View>
 
         <View style={{ width: '75%', paddingHorizontal: 8 }}>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: theme.primaryText }}>A propos</Text>
-          <Text style={{ fontSize: 13, color: '#999', marginTop: 5 }}>Découvrez nos conditions d'utilisation</Text>
+          <View style={{ position: 'relative', flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: theme.primaryText }}>Invitations</Text>
+            {
+              receivedInvitations.length > 0 && <View style={{ backgroundColor: '#c24', marginLeft: 10, height: 18, width: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 10 }}>{receivedInvitations.length}</Text>
+              </View>
+            }
+          </View>
+          <Text style={{ fontSize: 13, color: '#999', marginTop: 5 }}>Consultez les invitations reçues</Text>
         </View>
 
         <View style={{ width: '8%', position: 'absolute', right: 10, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-          <AntDesign name="right" size={20} color={theme.primaryText} />
+          <AntDesign name="right" size={20} color={theme.primaryTextLight} />
         </View>
       </TouchableOpacity>
 
@@ -120,7 +136,22 @@ export default function ProfileScreen(props: any) {
         </View>
 
         <View style={{ width: '8%', position: 'absolute', right: 10, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-          <AntDesign name="right" size={20} color={theme.primaryText} />
+          <AntDesign name="right" size={20} color={theme.primaryTextLight} />
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={{ marginVertical: 10, padding: 8, borderRadius: 8, width: '100%', backgroundColor: 'rgba(200, 200, 220, .1)', alignItems: 'center', flexDirection: 'row' }}>
+        <View style={{ height: 30, width: 40, justifyContent: 'center', alignItems: 'center' }}>
+          <AntDesign name="infocirlce" size={25} color={theme.primaryText} />
+        </View>
+
+        <View style={{ width: '75%', paddingHorizontal: 8 }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: theme.primaryText }}>A propos</Text>
+          <Text style={{ fontSize: 13, color: '#999', marginTop: 5 }}>Découvrez nos conditions d'utilisation</Text>
+        </View>
+
+        <View style={{ width: '8%', position: 'absolute', right: 10, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
+          <AntDesign name="right" size={20} color={theme.primaryTextLight} />
         </View>
       </TouchableOpacity>
 
@@ -135,7 +166,7 @@ export default function ProfileScreen(props: any) {
         </View>
 
         <View style={{ width: '8%', position: 'absolute', right: 10, justifyContent: 'flex-end', alignItems: 'flex-end' }}>
-          <AntDesign name="right" size={20} color={theme.primaryText} />
+          <AntDesign name="right" size={20} color={theme.primaryTextLight} />
         </View>
       </TouchableOpacity>
 
@@ -150,15 +181,15 @@ export default function ProfileScreen(props: any) {
 
       </TouchableOpacity>
 
-      <Modal visible={loading}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Modal visible={loading} transparent>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .6)' }}>
           <LottieView
             autoPlay
             style={{ height: 100, width: 100 }}
             loop
-            source={require('../assets/lotties/loader.json')}
+            source={require('../assets/lotties/loading-2.json')}
           />
-        </View>
+        </View>  
       </Modal>
     </View>
   )

@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions, ActivityIndicator, Modal, FlatList } from 'react-native';
+import { View, Text, Image, Pressable, Share, StyleSheet, ImageBackground, Dimensions, ActivityIndicator, Modal, FlatList, Linking, TouchableOpacity, InteractionManager } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { WebView } from 'react-native-webview';
 import AntDesign from '@expo/vector-icons/AntDesign';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import CalendarPicker from 'react-native-calendar-picker';
 import Carousel from 'react-native-reanimated-carousel';
+import MapView, { Marker } from 'react-native-maps';
 
 import Collapsible from 'react-native-collapsible';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,15 +16,21 @@ import LottieView from "lottie-react-native";
 import GoogleSignInModal from '../components/GoogleSignInModal';
 import lightTheme from '../themes/lightTheme';
 import darkTheme from '../themes/darkTheme';
-import { finaleStoreSuccessBooking, getAvailableCenters, getAvailableTerrains, storeBooking } from '../services/reservation';
+import { finaleStoreSuccessBooking, getAvailableCenters, processPaymentForBooking } from '../services/reservation';
 import { getAllClientsExceptCurrent } from '../services/user';
 import ParticipantsModal from '../components/ParticipantsModal';
 import { baseUrlPublic } from '../services/baseUrl';
 import * as Location from 'expo-location';
 import RenderSportCenterItem from '../components/RenderSportCenterItem';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate, Extrapolate } from 'react-native-reanimated'
-const WEEK_DAYS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
-const MONTHS = ["Jan", "Fev", "Mar", "Avr", "Mai", "Jui", "Jui", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated'
+import CalendarSelector from '../components/CalendarSelector';
+import { useAppearDisappearAnimation } from '../animations/useAppearDisappearAnimation';
+import SkeletonView from '../components/SkeletonView';
+import BookingRecapModal from '../components/BookingRecapModal';
+import CheckoutModal from '../components/CheckoutModal';
+import TimeSlotSelector from '../components/TimeSlotSelector';
+import SuccessModal from '../components/SuccessModal';
+import SportCenterModal from '../components/SportCenterModal';
 const { width, height } = Dimensions.get("window");
 
 
@@ -58,15 +65,12 @@ export default function ReservationScreen(props: any) {
   const theme = mode === 'light' ? lightTheme : darkTheme;
 
   const { activity } = props.route.params
-  const minDate: Date = new Date();
-  const [selectedDateDatas, setSelectedDateDatas] = useState<any>(null);
-  const [displayCalendar, setdisplayCalendar] = useState(false)
-  const [availableHours, setAvailableHours] = useState<Array<any>>([])
+  const { animatedStyle, animateIn, animateOut } = useAppearDisappearAnimation();
+
   const [isScreenReady, setIsScreenReady] = useState(false)
   const [displayGooglebtn, setDisplayGooglebtn] = useState(false)
   const [displayBookingRecapModal, setDisplayBookingRecapModal] = useState(false)
   const [displayCheckoutModal, setDisplayCheckoutModal] = useState(false)
-  const [selectedCourt, setSelectedCourt] = useState<any>(null)
   const [selectedTime, setSelectedTime] = useState(null);
   const [paymentUrl, setPaymentUrl] = useState('')
   const [totalAmount, setTotalAmount] = useState(0);
@@ -74,80 +78,49 @@ export default function ReservationScreen(props: any) {
   const [user, setUser] = useState<any>();
   const [displaySuccessModal, setDisplaySuccessModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState(activity)
-  const [availableTerrains, setAvailableTerrains] = useState<any>(undefined);
   const [availableUsers, setAvailableUsers] = useState<any>([]);
   const [participants, setParticipants] = useState([]);
   const [displayParticipantsModal, setDisplayParticipantsModal] = useState(false)
-  const firstTimeInterval = getCurrentTimeInterval();
-  const [timeInterval, setTimeInterval] = useState(firstTimeInterval);
   const timeSlots = generateTimeSlots("08:00", "23:59");
   const [availableCenters, setAvailableCenters] = useState<any>(undefined);
   const scrollX = useSharedValue(0);
-  const [animationProps, setAnimationProps] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [sportCenterModal, setSportCenterModal] = useState(false);
   const [selectedSportCenter, setSelectedSportCenter] = useState<any>(undefined)
   const [selectedDuration, setSelectedDuration] = useState(60)
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [centersLoading, setCentersLoading] = useState(false);
+  const timeSlotScrollViewRef = useRef<ScrollView>(null);
+  const centersForCurrentActivityRef = useRef<[]>([]);
 
   const durations = [60, 90, 120];
 
   const webviewRef = useRef<WebView>(null)
-
-  const styles = StyleSheet.create({
-    timeSlot: {
-      marginHorizontal: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 15,
-      borderRadius: 10,
-    },
-    selectedTimeSlot: {
-      backgroundColor: theme.primaryBackground,
-    },
-    timeText: {
-      color: theme.primaryBackground,
-      fontWeight: '800'
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 20,
-    },
-  });
-
-
-  const intervals = [
-    { startTime: "08:00", endTime: "12:00" },
-    { startTime: "12:00", endTime: "16:00" },
-    { startTime: "16:00", endTime: "20:00" },
-    { startTime: "20:00", endTime: "23:59" },
-  ];
-
-  function incrementInterval() {
-    const currentIndex = intervals.findIndex(interval => interval.startTime === timeInterval.startTime);
-    const result = intervals[(currentIndex + 1) % intervals.length];
-    console.log(result);
-    setTimeInterval(result)
-    handleTimeSelect(result.startTime)
+  const currentCenterImageUrl = baseUrlPublic + selectedSportCenter?.photo_couverture.replace("public", "storage");
+  const currentCenterDistanceArrondie = selectedSportCenter?.distance ? selectedSportCenter?.distance.toFixed(2) : "N/A";
+  let tarif: any;
+  switch (selectedDuration) {
+    case 60:
+      tarif = selectedSportCenter?.tarif_60_min;
+      break;
+    case 90:
+      tarif = selectedSportCenter?.tarif_90_min;
+      break;
+    case 120:
+      tarif = selectedSportCenter?.tarif_120_min;
+      break;
+    default:
+      tarif = "N/A";
   }
-  function decrementInterval() {
-    const currentIndex = intervals.findIndex(interval => interval.startTime === timeInterval.startTime);
-    const result = intervals[(currentIndex - 1 + intervals.length) % intervals.length];
-    console.log(result);
-    setTimeInterval(result);
-    handleTimeSelect(result.startTime)
-  }
+
 
   const incrementDuration = () => {
-    // Trouvez l'index de la durée actuelle
     const currentIndex = durations.indexOf(selectedDuration);
-    // Incrémentez l'index, si c'est le dernier, revenez au premier
     const nextIndex = (currentIndex + 1) % durations.length;
     setSelectedDuration(durations[nextIndex]);
   };
 
   const decrementDuration = () => {
-    // Trouvez l'index de la durée actuelle
     const currentIndex = durations.indexOf(selectedDuration);
-    // Décrémentez l'index, si c'est le premier, allez au dernier
     const prevIndex = (currentIndex - 1 + durations.length) % durations.length;
     setSelectedDuration(durations[prevIndex]);
   };
@@ -156,17 +129,19 @@ export default function ReservationScreen(props: any) {
     setParticipants(newParticipants);
   };
 
-  function generateTimeSlots(startTime: any, endTime: any) {
-    let result = [];
-    let current = new Date(`2021-01-01T${startTime}`);
+  function generateTimeSlots(startTime: string, endTime: string): string[] {
+    const result: string[] = [];
+    const current = new Date(`2021-01-01T${startTime}`);
     const end = new Date(`2021-01-01T${endTime}`);
 
-    while (current < end) {
-      result.push(current.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
-      current = new Date(current.getTime() + 30 * 60000);
+    const numberOfSlots = Math.ceil((end.getTime() - current.getTime()) / (30 * 60 * 1000));
+    result.length = numberOfSlots;
+
+    for (let i = 0; i < numberOfSlots; i++) {
+      result[i] = current.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      current.setMinutes(current.getMinutes() + 30);
     }
 
-    // Pour inclure 00:00 dans l'intervalle de 20:00 à 00:00
     if (endTime === "23:59") {
       result.push("23:59");
     }
@@ -174,70 +149,112 @@ export default function ReservationScreen(props: any) {
     return result;
   }
 
-  const handleTimeSelect = (time: any) => {
-    setSelectedTime(time);
-    // fetchAvailableTerrains(time);
-    console.log("TIME SELECTED");
 
-    fetchAvailableCenters(time)
+  const handleTimeSelect = (time: any) => {
+    try {
+      const index = timeSlots.indexOf(time);
+      const desiredPosition = index * 95;
+      timeSlotScrollViewRef?.current?.scrollTo({ x: desiredPosition, y: 0, animated: true });
+
+      setSelectedTime(time);
+
+      fetchAvailableCenters(time);
+
+    } catch (error) {
+      console.error("Error while selecting time:", error);
+    }
   };
+
 
   const fetchAvailableCenters = async (time?: any) => {
-    // Demander la permission d'accès à la localisation
-    const { status } = await Location.requestForegroundPermissionsAsync();
-
-    if (status !== 'granted') {
-      console.log('Permission to access location was denied');
-      return;
-    }
-
-    // Récupérer la localisation actuelle
-    const location = await Location.getCurrentPositionAsync({});
-    const { latitude, longitude } = location.coords;
-
-    const foundedCenters = await getAvailableCenters(time || selectedTime, selectedDateDatas.fullDate, selectedDuration, activity, latitude, longitude)
-    setAvailableCenters(foundedCenters);
-  }
-
-  const customDayHeaderStylesCallback = ({ dayOfWeek, month, year }: any) => {
-    return {
-      textStyle: {
-        color: theme.primaryTextLight,
-        fontSize: 13,
-        fontWeight: '300'
+    setSpinner(true);
+    setCentersLoading(true);
+    const filteredCenters = centersForCurrentActivityRef?.current?.filter((centre: any) => {
+      const reservationsForSelectedDate = centre.reservations[selectedDate?.toLocaleDateString()] || [];
+      if (reservationsForSelectedDate.length === 0) {
+        return true;
       }
-    };
+      return reservationsForSelectedDate.every((reservation: any) => {
+        const reservationStartTime = new Date(`2024-01-01T${reservation.heure_debut}`).getTime();
+        const reservationEndTime = new Date(`2024-01-01T${reservation.heure_fin}`).getTime();
+        const selectedTime = new Date(`2024-01-01T${time}`).getTime();
+        const selectedReservationEndTime = selectedTime + selectedDuration * 60 * 1000;
+        return !(selectedReservationEndTime > reservationStartTime && selectedTime < reservationEndTime);
+      });
+    });
+    setAvailableCenters(filteredCenters);
+    setSpinner(false);
+    setCentersLoading(false);
   };
 
-  useEffect(() => {
-    const data = getWeekData(new Date())
 
-    setSelectedDateDatas(data)
-    const hours_list = getAllHoursBetween("08:00", "20:00")
+  useEffect(() => {
     onLoad()
-    setIsScreenReady(true)
-    setAvailableHours(hours_list)
-    // console.log(props.navigation)
-    props?.navigation?.setOptions({
-      headerTitle: () => <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', maxWidth: width * .6, color: theme.primaryText }}>Faire une réservation</Text>,
-      headerTintColor: theme.primaryText
-    })
   }, [])
 
   async function onLoad() {
-    const userStr = await AsyncStorage.getItem("userInfo")
-    if (userStr) {
-      const { user } = JSON.parse(userStr)
-      setUser(user)
-      const foundedAvailableUsers = await getAllClientsExceptCurrent(user.email);
-      setAvailableUsers(foundedAvailableUsers);
+    try {
+      console.log("ONLOAD START !");
+
+      // Load centers for activity and get current time concurrently
+      const [centers, currentTime] = await Promise.all([
+        loadCentersForActivity(),
+        getRoundedCurrentTime(),
+      ]);
+
+      // Handle time selection
+      handleTimeSelect(currentTime);
+
+      // Retrieve user info from AsyncStorage
+      const userStr = await AsyncStorage.getItem("userInfo");
+      if (userStr) {
+        const { user } = JSON.parse(userStr);
+        setUser(user);
+
+        // Fetch available users concurrently
+        const foundedAvailableUsers = await getAllClientsExceptCurrent(user.email);
+        setAvailableUsers(foundedAvailableUsers);
+      }
+    } catch (error) {
+      console.error("Error while loading data:", error);
     }
   }
 
-  function handleDateChange(date: any) {
-    const data = getWeekData(new Date(date))
-    setSelectedDateDatas(data)
-    setdisplayCalendar(false)
+  async function loadCentersForActivity() {
+    setCentersLoading(true);
+    try {
+      const centersWithReservationsStr = await AsyncStorage.getItem('centersWithReservations');
+      const centersWithReservations = JSON.parse(centersWithReservationsStr || '');
+      const centers = centersWithReservations.filter((centre: any) => {
+        return centre.activites.some((act: any) => act.nom === activity)
+      });
+      centersForCurrentActivityRef.current = centers;
+    } catch (error) {
+      console.error("Error while loading centers:", error);
+    } finally {
+      setIsScreenReady(true);
+      setCentersLoading(false);
+    }
+  }
+
+  function getRoundedCurrentTime(): string {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const roundedMinutes = Math.floor(minutes / 30) * 30;
+    now.setMinutes(roundedMinutes, 0, 0);
+    const hours = now.getHours().toString().padStart(2, '0');
+    const mins = now.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${mins}`;
+  }
+
+  async function handleDateChange(date: Date) {
+    setSpinner(true);
+    console.log(spinner)
+    setCentersLoading(true);
+    setSelectedDate(date)
+    if (selectedTime) {
+      fetchAvailableCenters(selectedTime);
+    }
   }
 
   function onBookNowPress() {
@@ -248,12 +265,13 @@ export default function ReservationScreen(props: any) {
     }
   }
 
-  function onTerrainChooseForBooking(amount: number, terrain_id: number) {
+  function onBookCenterPress(amount: number, center_id: number) {
+    setSportCenterModal(false);
     if (user !== null && user !== undefined) {
       setDisplayParticipantsModal(true)
       setTotalAmount(amount)
-      const terr = availableTerrains.filter((item: any, index: number) => item.id === terrain_id)[0];
-      setSelectedCourt(terr);
+      const terr = availableCenters.filter((item: any, index: number) => item.id === center_id)[0];
+      setSelectedSportCenter(terr);
     } else {
       setDisplayGooglebtn(true)
     }
@@ -262,18 +280,26 @@ export default function ReservationScreen(props: any) {
   async function onConfirmPress() {
     setDisplayBookingRecapModal(false)
     setSpinner(true)
-    const response = await storeBooking(user.givenName, user.familyName, user.email, totalAmount);
+    const response = await processPaymentForBooking(user.givenName, user.familyName, user.email, totalAmount);
     setPaymentUrl(response.url);
     setSpinner(false)
     setDisplayCheckoutModal(true);
   }
 
   async function onBookingPaymentSuccess(transactionId: number, transactionStatus: string) {
-    const hours = availableHours.filter((item: any, index: number) => item.isSelected)
-    const response = await finaleStoreSuccessBooking(user.email, participants, selectedCourt.id, selectedDateDatas.fullDate, selectedTime, transactionId, transactionStatus, totalAmount, activity)
+    const response = await finaleStoreSuccessBooking(user.email, participants, selectedSportCenter?.id, selectedDate?.toLocaleDateString(), selectedTime, selectedDuration, transactionId, transactionStatus, totalAmount, activity)
     console.log(response);
     setDisplaySuccessModal(true);
+    animateIn();
   }
+
+  const handleCloseSuccessModal = () => {
+    animateOut(() => {
+      // Après l'animation, utilisez navigate pour retourner à HomeScreen avec des paramètres
+      runOnJS(props.navigation.navigate)('HomeTab', { fromReservationScreen: true });
+    });
+  };
+
 
   function getURLParameters(url: string) {
     const params: any = {};
@@ -292,13 +318,13 @@ export default function ReservationScreen(props: any) {
 
     console.log("Callback => " + url);
 
-    if (!url.toString().includes(baseUrlPublic)) {
+    if (!url.toString().includes("shouldReturnToSuccess")) {
       return;
     }
 
     const params = getURLParameters(url);
-    const transactionStatus = params.status;
-    const transactionId = params.id;
+    const transactionStatus = params?.status;
+    const transactionId = params?.id;
 
     console.log('transactionId => ' + transactionId);
     if (transactionStatus !== 'approved') {
@@ -310,197 +336,37 @@ export default function ReservationScreen(props: any) {
     setDisplayCheckoutModal(false)
   }
 
-
-  function getWeekData(inputDate: Date) {
-    const date = new Date(inputDate);
-    const dayOfWeek = date.getUTCDay();
-    const mondayDate = new Date(date);
-    mondayDate.setUTCDate(date.getUTCDate() - dayOfWeek);
-    const weekDates = [mondayDate];
-
-    for (let i = 1; i < 7; i++) {
-      const nextDate = new Date(mondayDate);
-      nextDate.setUTCDate(mondayDate.getUTCDate() + i);
-
-      if (nextDate.getUTCMonth() === date.getUTCMonth()) {
-        weekDates.push(nextDate);
-      }
-    }
-
-    const dateDay = date.getDate();
-    const dateMonth = date.getUTCMonth() + 1; // Ajoutez 1 pour obtenir un index de mois correct
-    const dateYear = date.getUTCFullYear();
-    const monthName = MONTHS[dateMonth - 1]; // Utilisez dateMonth - 1 pour obtenir le nom correct du mois
-
-    return { dateDay, weekDates, monthName, dateYear, dateMonth, fullDate: date.toLocaleDateString() };
-  }
-
-
-  const availableHoursRef = useRef(availableHours);
-  availableHoursRef.current = availableHours; // Garder une référence actuelle
-
-  function calculateAmount(hour: any) {
-    return hour >= '08:00' && hour < '17:00' ? 5000 : 5000;
-  }
-
-  useEffect(() => {
-    const newTotalAmount = Array.from(availableHours.values()).reduce((sum: number, hour: any) => {
-      return hour.isSelected ? sum + calculateAmount(hour.hour) : sum;
-    }, 0);
-
-    setTotalAmount(newTotalAmount);
-  }, [availableHours]);
-
-
-  function getCurrentTimeInterval() {
-    const now = new Date();
-    const currentHour = now.getHours();
-
-    if (currentHour >= 8 && currentHour < 12) {
-      return { startTime: "08:00", endTime: "12:00" };
-    } else if (currentHour >= 12 && currentHour < 16) {
-      return { startTime: "12:00", endTime: "16:00" };
-    } else if (currentHour >= 16 && currentHour < 20) {
-      return { startTime: "16:00", endTime: "20:00" };
-    } else {
-      return { startTime: "20:00", endTime: "23:59" };
-    }
-  }
-
-
   function renderActivityIndicator() {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="small" color={theme.primary} />
-    </View>
-  }
-
-  function renderDateSelector() {
-    return <View style={{ position: 'relative', minHeight: 130 }}>
-
-      <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', marginBottom: 15, position: 'relative', top: 0, left: 0, right: 0 }}>
-        {/* <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 10, textAlign: 'center', color: theme.primaryTextLight }}>{selectedDateDatas?.monthName} {selectedDateDatas?.dateYear} </Text> */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 10, alignItems: 'center', width: '85%' }}>
-          {
-            Array.from({ length: 5 }, (_, i) => i).map((d, i) => {
-              return <TouchableOpacity
-                onPress={() => {
-                  // handleDateChange(selectedDateDatas?.weekDates[i]?.toLocaleDateString())
-                }}
-                key={i} style={{
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  paddingVertical: 5,
-                  paddingHorizontal: 15,
-                  borderRadius: 10,
-                  borderColor: '#888',
-                  marginHorizontal: 2,
-                  backgroundColor: selectedDateDatas?.weekDates[i]?.getUTCDate() === selectedDateDatas?.dateDay ? theme.primary : theme.primaryBackground,
-                  opacity: selectedDateDatas?.weekDates[i]?.getUTCDate() ? 1 : 0
-                }}>
-                <Text style={{ color: selectedDateDatas?.weekDates[i]?.getUTCDate() === selectedDateDatas?.dateDay ? "#fff" : theme.primaryText, fontSize: 10, fontWeight: '300' }}>{WEEK_DAYS[i]} </Text>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: selectedDateDatas?.weekDates[i]?.getUTCDate() === selectedDateDatas?.dateDay ? "#fff" : theme.primaryTextLight }}>{selectedDateDatas?.weekDates[i]?.getUTCDate()} </Text>
-                <Text style={{ fontSize: 10, color: theme.primaryTextLight }}>{selectedDateDatas?.monthName} </Text>
-              </TouchableOpacity>
-            })
-          }
-        </View>
-
-        <TouchableOpacity style={{ flex: 1, marginRight: 10 }} onPress={() => setdisplayCalendar(!displayCalendar)}>
-          <AntDesign name="calendar" size={20} color={theme.primaryText} style={{ padding: 10 }} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={{ position: 'relative', top: 0, right: 0, left: 0, }}>
-        <Collapsible collapsed={!displayCalendar}>
-          <CalendarPicker
-            onDateChange={handleDateChange}
-            weekdays={WEEK_DAYS}
-            months={MONTHS}
-            minDate={minDate}
-            restrictMonthNavigation
-            dayLabelsWrapper={{ borderTopWidth: 0, borderBottomWidth: 0, paddingBottom: 0 }}
-            customDayHeaderStyles={customDayHeaderStylesCallback}
-            previousComponent={<AntDesign name="left" size={20} color={theme.primaryText} />}
-            nextComponent={<AntDesign name="right" size={20} color={theme.primaryText} />}
-            monthTitleStyle={{ fontSize: 15, color: theme.primaryTextLight, fontWeight: "500" }}
-            yearTitleStyle={{ fontSize: 15, color: theme.primaryTextLight, fontWeight: "500" }}
-            selectedDayStyle={{ backgroundColor: theme.primaryLight }}
-            textStyle={{ color: theme.primaryText }}
-          />
-        </Collapsible>
-      </View>
-    </View>
-
-  }
-
-  function renderTimeIntervalleAndFilter() {
-
-    return <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', padding: 10 }}>
-      <TouchableOpacity style={{ backgroundColor: 'rgb(230, 230, 235)', height: 50, position: 'relative', width: '45%', borderRadius: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ backgroundColor: 'rgb(215, 215, 218)', height: 50, justifyContent: 'center', alignItems: 'center', position: 'absolute', left: 0, borderRadius: 7 }}>
-          <MaterialIcons name="filter-list" size={20} color={theme.primary} style={{ padding: 10 }} />
-        </View>
-        <Text style={{ color: theme.primaryText }}> {selectedActivity} </Text>
-      </TouchableOpacity>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '45%', borderWidth: 1, borderColor: 'rgb(215, 215, 218)', borderRadius: 10 }}>
-        <AntDesign name="left" onPress={() => decrementDuration()} size={13} style={{ padding: 10, paddingVertical: 15, height: 50, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgb(215, 215, 218)', borderRadius: 10 }} color={theme.primary} />
-        <Text style={{ color: theme.primaryText }}> {selectedDuration} min </Text>
-        <AntDesign name="right" onPress={() => incrementDuration()} size={13} style={{ padding: 10, paddingVertical: 15, height: 50, backgroundColor: 'rgb(215, 215, 218)', borderRadius: 10 }} color={theme.primary} />
-      </View>
-    </View>
-  }
-
-  function renderTerrains() {
-    return <View style={{ flex: 1 }}>
-      <FlatList
-        data={availableTerrains}
-        keyExtractor={(item, index) => index.toString()}
-        renderItem={({ item, index }) => {
-          return <View style={{ padding: 10, borderBottomWidth: 2, borderColor: '#ccc', marginBottom: 15 }}>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.primaryText }} numberOfLines={1}>{item.nom} </Text>
-            <Text style={{ fontSize: 13, color: theme.primaryTextLight }}>{item.adresse} </Text>
-
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 10 }}>
-              <View>
-                <Text style={{ fontSize: 13, color: theme.primaryText, marginBottom: 5 }}>Début</Text>
-                <Text style={{ fontSize: 18, color: theme.primaryText, fontWeight: '500' }}>{selectedTime}</Text>
-              </View>
-
-              <View style={{ flex: 1, padding: 10 }}>
-                <TouchableOpacity onPress={() => onTerrainChooseForBooking(4000, item.id)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginVertical: 10 }}>
-                  <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primaryText }}>60 min</Text>
-                  <Text style={{ fontSize: 14, marginHorizontal: 5, color: theme.primaryTextLight }}>A partir de </Text>
-                  <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primary, fontWeight: '500' }}>16000 FCFA</Text>
-                  <AntDesign name="right" size={16} style={{ marginLeft: 8 }} color={theme.primaryText} />
-                </TouchableOpacity>
-
-                {
-                  item.available_for_90_minutes && <TouchableOpacity onPress={() => onTerrainChooseForBooking(20000, item.id)}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginVertical: 10 }}>
-                    <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primaryText }}>90 min</Text>
-                    <Text style={{ fontSize: 14, marginHorizontal: 5, color: theme.primaryTextLight }}>A partir de </Text>
-                    <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primary, fontWeight: '500' }}>20000 FCFA</Text>
-                    <AntDesign name="right" size={16} style={{ marginLeft: 8 }} color={theme.primaryText} />
-                  </TouchableOpacity>
-                }
-
-                {
-                  item.available_for_120_minutes && <TouchableOpacity onPress={() => onTerrainChooseForBooking(40000, item.id)}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginVertical: 10 }}>
-                    <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primaryText }}>120 min</Text>
-                    <Text style={{ fontSize: 14, marginHorizontal: 5, color: theme.primaryTextLight }}>A partir de </Text>
-                    <Text style={{ fontSize: 15, marginHorizontal: 5, color: theme.primary, fontWeight: '500' }}>40000 FCFA</Text>
-                    <AntDesign name="right" size={16} style={{ marginLeft: 8 }} color={theme.primaryText} />
-                  </TouchableOpacity>
-                }
-              </View>
-            </View>
-          </View>
-        }}
+      <LottieView
+        autoPlay
+        style={{ height: 100, width: 100 }}
+        loop
+        source={require('../assets/lotties/loading-a.json')}
       />
     </View>
   }
+
+
+
+  function renderTimeIntervalleAndFilter() {
+
+    return <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between', padding: 10, marginTop: 15 }}>
+      <Pressable style={{ backgroundColor: 'rgb(230, 230, 235)', height: 50, position: 'relative', width: '45%', borderRadius: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ backgroundColor: 'rgb(215, 215, 218)', height: 50, justifyContent: 'center', alignItems: 'center', position: 'absolute', left: 0, borderRadius: 7 }}>
+          <MaterialIcons name="filter-list" size={20} color={theme.primaryTextLight} style={{ padding: 10 }} />
+        </View>
+        <Text style={{ color: theme.primaryText }}> {selectedActivity} </Text>
+      </Pressable>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '45%', borderWidth: 1, borderColor: 'rgb(215, 215, 218)', borderRadius: 10 }}>
+        <AntDesign name="left" onPress={() => decrementDuration()} size={13} style={{ padding: 10, paddingVertical: 15, height: 50, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgb(215, 215, 218)', borderRadius: 10 }} color={theme.primaryTextLight} />
+        <Text style={{ color: theme.primaryText }}> {selectedDuration} min </Text>
+        <AntDesign name="right" onPress={() => incrementDuration()} size={13} style={{ padding: 10, paddingVertical: 15, height: 50, backgroundColor: 'rgb(215, 215, 218)', borderRadius: 10 }} color={theme.primaryTextLight} />
+      </View>
+    </View>
+  }
+
 
   const onItemPress = (item: any, index: number, itemRef: any) => {
     // setAnimationProps({ x: pageX, y: pageY, width, height });
@@ -510,10 +376,43 @@ export default function ReservationScreen(props: any) {
     // });
   };
 
+  const handlePhoneCall = () => {
+    const phoneNumber = `tel:${selectedSportCenter?.telephone}`;
+    Linking.canOpenURL(phoneNumber)
+      .then(supported => {
+        if (supported) {
+          Linking.openURL(phoneNumber);
+        } else {
+          console.log("Impossible de passer un appel");
+        }
+      });
+  };
+
+  const updateSpinnerValue = async (value: boolean) => {
+    setSpinner(value)
+  }
+
+
+  // Fonction pour partager l'emplacement
+  const shareLocation = async () => {
+    const shareLocationUrl = `https://www.google.com/maps/search/?api=1&query=${selectedSportCenter?.latitude},${selectedSportCenter?.longitude}`;
+    const message = `Découvrez ${selectedSportCenter?.nom} situé à ${selectedSportCenter?.adresse}. Voici le lien pour voir l'emplacement sur Google Maps: ${shareLocationUrl}`;
+    try {
+      await Share.share({
+        message,
+        // Vous pouvez optionnellement ajouter un titre pour l'email
+        title: 'Découvrez ce lieu sur Google Maps',
+        // Pour un partage spécifique vers WhatsApp, vous auriez à utiliser une URL deep link spécifique à WhatsApp.
+        // Cela est plus complexe et nécessite de savoir si l'utilisateur a WhatsApp installé.
+      });
+    } catch (error) {
+      console.error('Erreur lors du partage', error);
+    }
+  };
   const centerModalAnimatedStyles = useAnimatedStyle(() => {
     return {
       width: sportCenterModal ? withTiming(width * .95) : width * .8,
-      height: sportCenterModal ? withTiming(height * .7) : height * .5,
+      height: sportCenterModal ? withTiming(height * .85) : height * .5,
     };
   });
 
@@ -531,13 +430,13 @@ export default function ReservationScreen(props: any) {
           }}
           // style={{ padding: 10 }}
           renderItem={({ item, index }) => (
-            <RenderSportCenterItem onItemPress={onItemPress} item={item} index={index} scrollX={scrollX} theme={theme} duree={selectedDuration} />
+            <RenderSportCenterItem onItemPress={onItemPress} item={item} index={index} onBookCenterPress={(item: any, tarif: any, id: number) => {
+              setSelectedSportCenter(item);
+              onBookCenterPress(tarif, id)
+            }} scrollX={scrollX} theme={theme} duree={selectedDuration} />
           )}
           onProgressChange={(progress, absoluteProgress) => {
-            // Mettez à jour scrollX ici
-            // `progress` est la progression relative qui commence de 0 à 1 à chaque slide
-            // `absoluteProgress` est la progression absolue sur tous les éléments
-            scrollX.value = absoluteProgress * width; // ou une autre logique selon votre besoin
+            scrollX.value = absoluteProgress * width;
           }}
           autoPlay={false}
         />
@@ -545,190 +444,72 @@ export default function ReservationScreen(props: any) {
     );
   }
 
-  function renderTimeSlots() {
-    return <>
-      <View style={{ flexDirection: 'row', paddingVertical: 10, alignItems: 'center', justifyContent: 'space-between', }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ backgroundColor: theme.primary, padding: 5 }}>
-          {timeSlots.map((time: any, index: number) => (
-            <TouchableOpacity
-              key={index}
-              style={[styles.timeSlot, time === selectedTime && styles.selectedTimeSlot]}
-              onPress={() => handleTimeSelect(time)}
-            >
-              <Text style={[styles.timeText, time === selectedTime && { color: theme.primaryText }]}>{time}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {
-        availableHours.findIndex((item: any, index: number) => item.isSelected) !== -1
-        && <TouchableOpacity
-          onPress={() => onBookNowPress()}
-          activeOpacity={.9}
-          style={{ position: 'absolute', bottom: 8, elevation: 10, alignSelf: 'center', width: '95%', justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingVertical: 20, paddingHorizontal: 40, backgroundColor: theme.primary }}>
-          <Text style={{ color: '#fff', }}> Réserver maintenant </Text>
-        </TouchableOpacity>
-      }
-    </>
-  }
-
-  function renderFilterModal() {
-
-    return (
-      <Modal>
-
-      </Modal>
-    )
-  }
-
-
-
-  function renderBookingRecapModal() {
-    return <Modal transparent visible={displayBookingRecapModal} onRequestClose={() => setDisplayBookingRecapModal(false)}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .7)' }}>
-        <View style={{ padding: 20, width: '95%', backgroundColor: '#fff', borderRadius: 8 }}>
-          <TouchableOpacity onPress={() => setDisplayBookingRecapModal(false)} style={{
-            position: 'absolute', // Positionnement en absolu pour le placer en haut à droite
-            right: 15,
-            top: 10,
-            padding: 10, // Facilite le toucher
-            zIndex: 1,
-          }}>
-            <AntDesign name="close" size={24} color="#d22" />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 25 }}>Récapitulatif</Text>
-
-          <View style={{ marginVertical: 5, width: '100%', paddingVertical: 10, borderBottomWidth: .5, borderColor: theme.primaryTextLighter }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryTextLight }}>Date</Text>
-            <Text style={{ marginTop: 8, fontSize: 16, color: theme.primaryText }}>{`${selectedDateDatas.dateDay}-${selectedDateDatas.monthName}-${selectedDateDatas.dateYear}`}</Text>
-          </View>
-
-          <View style={{ marginVertical: 5, width: '100%', paddingVertical: 10, borderBottomWidth: .5, borderColor: theme.primaryTextLighter }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryTextLight }}>Horaire</Text>
-            <Text style={{ marginTop: 8, fontSize: 16, color: theme.primaryText }}>{selectedTime}</Text>
-          </View>
-
-          <View style={{ marginVertical: 5, width: '100%', paddingVertical: 10, borderBottomWidth: .5, borderColor: theme.primaryTextLighter }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryTextLight }}>Activité</Text>
-            <Text style={{ marginTop: 8, fontSize: 16, color: theme.primaryText }}>{activity}</Text>
-          </View>
-
-          <View style={{ marginVertical: 5, width: '100%', paddingVertical: 10, borderBottomWidth: .5, borderColor: theme.primaryTextLighter }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryTextLight }}>Lieu</Text>
-            <Text style={{ marginTop: 8, fontSize: 16, color: theme.primaryText }}>{selectedCourt?.nom}</Text>
-          </View>
-
-          <View style={{ marginVertical: 5, width: '100%', paddingVertical: 10 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryTextLight }}>Montant de la réservation</Text>
-            <View style={{ padding: 8, backgroundColor: theme.primary + '11', borderRadius: 10, marginTop: 5 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', textAlign: 'center' }}> {totalAmount} XOF </Text>
-            </View>
-          </View>
-
-          <View style={{ width: '100%', marginTop: 30 }}>
-            <TouchableOpacity
-              onPress={onConfirmPress}
-              activeOpacity={.9}
-              style={{ alignSelf: 'center', width: '100%', justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingVertical: 18, paddingHorizontal: 40, backgroundColor: theme.primary }}>
-              <Text style={{ color: '#fff', }}> Confirmer la réservation </Text>
-            </TouchableOpacity>
-          </View>
-
-        </View>
-      </View>
-    </Modal>
-  }
-
-  function renderCheckoutModal() {
-    return <Modal style={{}} transparent visible={displayCheckoutModal} >
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .5)' }}>
-        <View style={{ backgroundColor: '#fff', borderRadius: 8, width: '90%', height: 500 }}>
-          <TouchableOpacity onPress={() => setDisplayCheckoutModal(false)} style={{
-            position: 'absolute', // Positionnement en absolu pour le placer en haut à droite
-            right: 5,
-            top: 5,
-            padding: 15, // Facilite le toucher
-            zIndex: 1,
-          }}>
-            <AntDesign name="close" size={20} color="#d22" />
-          </TouchableOpacity>
-          {/* <WebView originWhitelist={['*']} source={{ html: checkoutHtmlContent }} />; */}
-          <WebView
-            ref={webviewRef}
-            source={{ uri: paymentUrl }}
-            style={{ opacity: .99 }}
-            onLoadEnd={handleWebViewNavigationStateChange}
-          />
-        </View>
-      </View>
-    </Modal>
-  }
 
   function renderActivityIndicatorModal() {
     return <Modal transparent visible={spinner}>
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .6)' }}>
-        <ActivityIndicator color={theme.primaryText} size="small" />
-      </View>
-    </Modal>
-  }
-
-  function renderSuccessModal() {
-    return <Modal visible={displaySuccessModal}>
-      <View style={{ flex: 1, padding: 20, position: 'relative', justifyContent: 'center', alignItems: 'center' }}>
         <LottieView
           autoPlay
-          loop={false}
-          style={{ height: 200, width: 200 }}
-          source={require('../assets/lotties/success-2.json')}
+          style={{ height: 100, width: 100 }}
+          loop
+          source={require('../assets/lotties/loading-2.json')}
         />
-
-        <Text style={{ fontSize: 25, fontWeight: '800', marginBottom: 20, marginTop: 50 }}>Réservation ajoutée</Text>
-        <Text style={{ textAlign: 'center', lineHeight: 20, fontSize: 16 }}>Votre réservation a été enregistrée avec succès ! N'hésitez pas à nous contacter pour toute préoccupation.</Text>
-
-
-        <View style={{ width: '100%', position: 'absolute', bottom: 50 }}>
-          <TouchableOpacity
-            onPress={() => props.navigation.goBack()}
-            activeOpacity={.9}
-            style={{ alignSelf: 'center', width: '100%', justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingVertical: 18, paddingHorizontal: 40, backgroundColor: theme.primary }}>
-            <Text style={{ color: '#fff', }}> Ok, j'ai compris </Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </Modal>
   }
 
-  const currentCenterImageUrl = baseUrlPublic + selectedSportCenter?.photo_couverture.replace("public", "storage");
-  const currentCenterDistanceArrondie = selectedSportCenter?.distance ? selectedSportCenter?.distance.toFixed(2) : "N/A";
-  let tarif;
-  switch (selectedDuration) {
-    case 60:
-      tarif = selectedSportCenter?.tarif_60_min;
-      break;
-    case 90:
-      tarif = selectedSportCenter?.tarif_90_min;
-      break;
-    case 120:
-      tarif = selectedSportCenter?.tarif_120_min;
-      break;
-    default:
-      tarif = "N/A";
-  }
+  
   return (
     <View style={{ flex: 1, backgroundColor: theme.primaryBackground }}>
       {isScreenReady ? (
         <>
-          {renderDateSelector()}
+          <CalendarSelector
+            selectedDate={selectedDate}
+            onDateChange={handleDateChange}
+            updateParentLoading={updateSpinnerValue}
+            theme={theme}
+          />
           {renderTimeIntervalleAndFilter()}
-          {renderTimeSlots()}
-          {renderSportCenters()}
+          <TimeSlotSelector
+            timeSlots={timeSlots}
+            selectedTime={selectedTime}
+            handleTimeSelect={handleTimeSelect}
+            theme={theme}
+          />
+          {
+            centersLoading ?
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <SkeletonView height={220} width={width * .9} />
+                <SkeletonView height={60} width={width * .9} />
+              </View> :
+              renderSportCenters()
+          }
           <GoogleSignInModal
             isVisible={displayGooglebtn}
-            onClose={() => {/* Logic to handle close */ }}
+            onClose={() => {
+              setDisplayGooglebtn(false)
+              onBookCenterPress(tarif, selectedSportCenter?.id)
+            }}
           />
-          {renderBookingRecapModal()}
-          {renderCheckoutModal()}
+          <BookingRecapModal
+            displayBookingRecapModal={displayBookingRecapModal}
+            setDisplayBookingRecapModal={setDisplayBookingRecapModal}
+            selectedDate={selectedDate}
+            selectedTime={selectedTime}
+            activity={activity}
+            selectedSportCenter={selectedSportCenter}
+            totalAmount={totalAmount}
+            theme={theme}
+            onConfirmPress={onConfirmPress}
+          />
+
+          <CheckoutModal
+            displayCheckoutModal={displayCheckoutModal}
+            setDisplayCheckoutModal={setDisplayCheckoutModal}
+            paymentUrl={paymentUrl}
+            webviewRef={webviewRef}
+            handleWebViewNavigationStateChange={handleWebViewNavigationStateChange}
+          />
         </>
       ) : renderActivityIndicator()}
       {renderActivityIndicatorModal()}
@@ -740,56 +521,29 @@ export default function ReservationScreen(props: any) {
           onClose={() => setDisplayParticipantsModal(false)}
           onUpdateParticipants={updateParticipants}
           onNextPress={() => setDisplayBookingRecapModal(true)}
+          theme={theme}
         />
       }
-      {renderSuccessModal()}
+      <SuccessModal
+        displaySuccessModal={displaySuccessModal}
+        handleCloseSuccessModal={handleCloseSuccessModal}
+        theme={theme}
+      />
 
-      <Modal transparent visible={sportCenterModal} onRequestClose={() => setSportCenterModal(false)} >
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .5)' }}>
-          <Animated.View style={[{
-            backgroundColor: 'rgb(240, 240, 240)',
-            borderRadius: 8,
-            overflow: 'hidden',
-          }, centerModalAnimatedStyles]}>
-            <TouchableOpacity onPress={() => setSportCenterModal(false)} style={{
-              position: 'absolute',
-              right: 10,
-              top: 10,
-              zIndex: 10,
-            }}>
-              <AntDesign name="close" size={24} color={theme.primaryText} />
-            </TouchableOpacity>
+      <SportCenterModal
+        sportCenterModal={sportCenterModal}
+        setSportCenterModal={setSportCenterModal}
+        currentCenterImageUrl={currentCenterImageUrl}
+        selectedSportCenter={selectedSportCenter}
+        tarif={tarif}
+        currentCenterDistanceArrondie={currentCenterDistanceArrondie}
+        theme={theme}
+        handlePhoneCall={handlePhoneCall}
+        shareLocation={shareLocation}
+        onBookCenterPress={onBookCenterPress}
+        height={height}
+      />
 
-            <Image source={{ uri: currentCenterImageUrl }} style={{ width: '100%', height: height * .3 }} />
-            <View style={{ padding: 8, flex: 1, position: 'relative' }}>
-              <Text style={{ fontSize: 15, fontWeight: 'bold', marginVertical: 10 }}>
-                {selectedSportCenter?.nom}
-              </Text>
-              <View style={{ flexDirection: 'row', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 15, color: theme.primary, fontWeight: '600' }}>{tarif} FCFA </Text>
-                <Text style={{ fontSize: 15, color: '#777' }}>A environ {currentCenterDistanceArrondie} km</Text>
-              </View>
-
-              <Text style={{ marginTop: 20, marginBottom: 10, fontSize: 15, lineHeight: 25, color: theme.primaryText }}>{selectedSportCenter?.description} </Text>
-
-              <TouchableOpacity style={{
-                backgroundColor: theme.primary, 
-                padding: 18,
-                borderRadius: 8,
-                justifyContent: 'center',
-                alignItems: 'center',
-                marginTop: 20,
-                position: 'absolute',
-                bottom: 10,
-                width: '100%',
-                alignSelf: 'center'
-              }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Réserver maintenant</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
     </View>
   )
 }

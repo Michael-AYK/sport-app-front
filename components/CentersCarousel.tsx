@@ -7,9 +7,6 @@ const { width } = Dimensions.get('window');
 
 // Item du carrousel
 const CarouselItem = ({ item, scrollX, index, itemWidth, itemStyle }: any) => {
-    console.log("uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu");
-    console.log(item);
-    
     const inputRange = [
         (index - 1) * itemWidth,
         index * itemWidth,
@@ -71,7 +68,6 @@ const CarouselItem = ({ item, scrollX, index, itemWidth, itemStyle }: any) => {
 // Composant Carrousel
 const SportCentersCarousel = ({ data, renderItem, itemWidth = width, itemStyle = {} }: any) => {
     const scrollX = useSharedValue(0);
-    console.log("ssssssssssssssssssssssssssssssss")
     return (
         <View style={{ flex: 1, backgroundColor: '#888', width: '100%' }}>
             <Animated.FlatList

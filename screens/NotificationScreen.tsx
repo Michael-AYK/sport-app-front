@@ -1,4 +1,4 @@
-import { View, Text, ActivityIndicator, Modal } from 'react-native'
+import { View, Text, ActivityIndicator, Modal, TouchableOpacity } from 'react-native'
 import React, { useEffect, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector, useDispatch } from 'react-redux';
@@ -22,13 +22,19 @@ export default function NotificationScreen(props: any) {
 
   async function loadNotifications() {
     setLoading(true);
-    console.log(dbUser);
     const data = await getUserNotifications(dbUser.client.id);
-    console.log(data)
     setNotifications(data);
-    setTimeout(() => {
-      setLoading(false);
-    }, 2000);
+    setLoading(false);
+  }
+
+  function onNotificationPress(notification: any) {
+    console.log(notification)
+    if(notification.notification_data) {
+      const notificationData = JSON.parse(notification.notification_data)
+      if(notificationData.route) {
+        props.navigation.navigate(notificationData.route, { reservationId: notificationData.reservationId })
+      }
+    }
   }
 
   return (
@@ -37,22 +43,22 @@ export default function NotificationScreen(props: any) {
         data={notifications}
         keyExtractor={(item, index) => index.toString()}
         refreshing={loading}
-        onRefresh={loadNotifications}
+        onRefresh={loadNotifications} 
         renderItem={({ item, index }: any) => {
-          return <View style={{ backgroundColor: item.status === 0 ? 'rgba(100, 100, 100, .05)' : theme.lightGreenTranslucent, padding: 10, marginVertical: 10, borderRadius: 5 }}>
+          return <TouchableOpacity onPress={() => onNotificationPress(item)} style={{ backgroundColor: item.status === 0 ? 'rgba(100, 100, 100, .05)' : theme.lightGreenTranslucent, padding: 10, marginVertical: 10, borderRadius: 5 }}>
             <Text style={{ marginBottom: 10, fontWeight: item.status === 0 ? '500': '300' }}>{item.body}</Text>
             <Text style={{ textAlign: 'right', fontStyle: 'italic', color: '#333', fontSize: 12 }}>{new Date(item.created_at).toLocaleString()} </Text>
-          </View>
+          </TouchableOpacity>
         }}
       />
 
-      <Modal visible={loading}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Modal visible={loading} transparent>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .5)' }}>
           <LottieView
             autoPlay
             style={{ height: 100, width: 100 }}
             loop
-            source={require('../assets/lotties/loader.json')}
+            source={require('../assets/lotties/loading-2.json')}
           />
         </View>
       </Modal>

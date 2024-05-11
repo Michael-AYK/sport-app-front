@@ -32,8 +32,8 @@ const BottomTab = ({ color, size = 20, index, label }: any) => {
   
 export default function CustomTabBar({state, descriptors, navigation}: any) {
   return (
-    <View style={{ width: '100%', justifyContent: 'center', alignItems: 'center', position: 'absolute', bottom: 20 }}>
-      <View style={{ backgroundColor: '#333333', width: '95%', elevation: 5, borderRadius: 30, padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' }}>
+    <View style={{ width: '100%', justifyContent: 'center', alignItems: 'center', position: 'absolute', bottom: 10 }}>
+      <View style={{ backgroundColor: '#333333', width: '95%', elevation: 5, borderRadius: 15, paddingVertical: 5, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' }}>
       {state.routes.map((route: any, index: any) => {
           const isFocused = state.index === index;
           const { options } = descriptors[route.key];
@@ -60,7 +60,7 @@ export default function CustomTabBar({state, descriptors, navigation}: any) {
               onPress={onPress}
               testID={options.tabBarTestID}
               accessibilityRole="button"
-              style={{ opacity: 1, padding: 5 }}
+              style={{ opacity: 1, padding: 10 }}
               activeOpacity={0.8}
             >
               <BottomTab

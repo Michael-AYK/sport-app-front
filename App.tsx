@@ -8,8 +8,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Provider } from 'react-redux';
 import store, { setTheme } from './redux/theme';
 import { getStoredTheme } from './utils/themeStorage';
+import moment from 'moment';
+import 'moment/locale/fr'; // Importer la localisation française
 
 export default function App() {
+  moment.locale('fr');
   useEffect(() => {
     // Récupérer le thème stocké dans AsyncStorage
     getStoredTheme().then((theme) => {

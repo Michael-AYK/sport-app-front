@@ -33,7 +33,7 @@ const HomeTabNavigator = ({navigation}: any) => {
             {(props: any) => <HomeScreen {...props} stackNavigation={navigation} />}
         </HomeTab.Screen>
         <HomeTab.Screen name='ReservationsList' component={ReservationsListScreen} options={{
-            headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryText }}>Calendrier</Text>,
+            headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryText }}>Réservations</Text>,
         }} />
         <HomeTab.Screen name='Profile' component={ProfileScreen} options={{
             headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700', color: theme.primaryText }}>Profil</Text>,

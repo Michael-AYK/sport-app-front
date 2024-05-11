@@ -29,64 +29,88 @@ const articles = [
     created_at: "2022-04-01",
     coverImage: "https://images.unsplash.com/photo-1622279457486-62dcc4a431d6?auto=format&fit=crop&q=80&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&w=1470"
   },
-  {
-    id: 5,
-    titre: "Rencontre avec un champion",
-    created_at: "2022-05-01",
-    coverImage: "https://images.unsplash.com/photo-1595435742656-5272d0b3fa82?auto=format&fit=crop&q=80&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&w=1528"
-  },
 ];
 
 const NewsSection = () => {
-    const mode = useSelector((state: any) => state.theme);
-    const theme = mode === 'light' ? lightTheme : darkTheme;
+  const mode = useSelector((state: any) => state.theme);
+  const theme = mode === 'light' ? lightTheme : darkTheme;
 
-    const styles = StyleSheet.create({
-        newsSection: {
-          paddingVertical: 10,
-        },
-        newsTitle: {
-          fontSize: 16,
-          fontWeight: 'bold',
-          marginBottom: 20,
-          color: theme.primaryText, // Utilisation de `theme` pour le texte
-        },
-        articleItem: {
-          flexDirection: 'row',
-          marginBottom: 15,
-          backgroundColor: theme.primaryBackground, // Utilisation de `theme` pour l'arrière-plan
-          borderRadius: 8,
-          overflow: 'hidden',
-          elevation: 1
-        },
-        articleImage: {
-          width: 120,
-          height: 100,
-        },
-        articleTextContainer: {
-          flex: 1,
-          padding: 10,
-        },
-        articleTitle: {
-          fontSize: 14,
-          fontWeight: 'bold',
-          color: theme.primaryText, // Utilisation de `theme` pour le texte
-        },
-        articleDate: {
-          fontSize: 12,
-          color: theme.primaryTextLight, // Utilisation de `theme` pour le texte secondaire
-          marginTop: 5,
-          position: 'absolute',
-          right: 10,
-          bottom: 10
-        },
-      });
+  const styles = StyleSheet.create({
+    newsSection: {
+      paddingVertical: 10,
+    },
+    newsTitle: {
+      fontSize: 18,
+      fontWeight: '900',
+      marginBottom: 5,
+      marginTop: 15,
+      color: theme.primaryText, // Utilisation de `theme` pour le texte
+    },
+    articleItem: {
+      flexDirection: 'row',
+      marginBottom: 15,
+      backgroundColor: theme.primaryBackground, // Utilisation de `theme` pour l'arrière-plan
+      borderRadius: 8,
+      overflow: 'hidden',
+      elevation: 1
+    },
+    articleImage: {
+      width: "100%",
+      borderTopRightRadius: 20,
+      borderTopLeftRadius: 20,
+      height: 100,
+      overflow: 'hidden'
+    },
+    articleTextContainer: {
+      flex: 1,
+      padding: 10,
+    },
+    articleTitle: {
+      fontSize: 14,
+      fontWeight: '400',
+      color: theme.primaryText, // Utilisation de `theme` pour le texte
+      marginBottom: 10
+    },
+    articleDate: {
+      fontSize: 12,
+      color: theme.primaryTextLight, // Utilisation de `theme` pour le texte secondaire
+      marginTop: 5,
+      position: 'absolute',
+      right: 10,
+      bottom: 10,
+      fontStyle: 'italic'
+    },
+  });
 
-      
+
   return (
     <View style={styles.newsSection}>
-      <Text style={styles.newsTitle}>ACTUALITÉS</Text>
-      {articles.map((item: any, index: number) => (
+      <Text style={styles.newsTitle}>Articles récents</Text>
+      <FlatList
+        data={articles}
+        numColumns={2}
+        scrollEnabled={false}
+        keyExtractor={(item, index) => index.toString()}
+        renderItem={({ item, index }: any) => {
+
+            <Image source={{ uri: item.coverImage }} style={styles.articleImage} />
+          return <TouchableOpacity style={{ position: 'relative', elevation: 10, overflow: 'hidden', width: '47.5%', marginVertical: 10, marginRight: index % 2 === 0 ? '5%': 0 }}>
+            <View style={styles.articleImage}>
+                    <Image source={{ uri: item.coverImage }} style={{ width: '100%', height: '100%' }} />
+                    <View style={{
+                        ...StyleSheet.absoluteFillObject,
+                        backgroundColor: theme.primary,
+                        opacity: 0.25, // Ajustez l'opacité selon le besoin
+                    }} />
+                </View>
+            <View style={{ marginTop: -20, height: 100, borderRadius: 20, paddingBottom: 40, paddingTop: 15, paddingHorizontal: 10, backgroundColor: theme.primaryBackground }}>
+              <Text style={styles.articleTitle} numberOfLines={2}>{item.titre}</Text>
+              <Text style={styles.articleDate}>Rédigé le {item.created_at}</Text>
+            </View>
+          </TouchableOpacity>
+        }}
+      />
+      {/* {articles.map((item: any, index: number) => (
           <TouchableOpacity key={index} style={styles.articleItem}>
             <Image source={{ uri: item.coverImage }} style={styles.articleImage} />
             <View style={styles.articleTextContainer}>
@@ -94,7 +118,7 @@ const NewsSection = () => {
               <Text style={styles.articleDate}>{item.created_at}</Text>
             </View>
           </TouchableOpacity>
-        ))}
+        ))} */}
     </View>
   );
 };

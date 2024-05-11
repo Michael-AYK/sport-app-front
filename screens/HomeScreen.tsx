@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Image, StatusBar, Dimensions, TouchableOpacity, ScrollView, StyleSheet, Animated, ImageBackground, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StatusBar, Dimensions, TouchableOpacity, ScrollView, StyleSheet, ImageBackground, Modal, ActivityIndicator, TextInput, RefreshControl } from 'react-native';
 import AntDesign from '@expo/vector-icons/AntDesign';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import Carousel from 'react-native-reanimated-carousel';
-import terrains from '../helpers/terrains';
 import { useSelector, useDispatch } from 'react-redux';
 import lightTheme from '../themes/lightTheme';
 import darkTheme from '../themes/darkTheme';
@@ -19,7 +15,11 @@ import { fetchSportsActivities } from '../services/sports';
 import { FlatList } from 'react-native-gesture-handler';
 import { baseUrlPublic } from '../services/baseUrl';
 import NewsSection from '../components/NewsSection';
-
+import { getCentersWithReservations, getRecentReservations } from '../services/reservation';
+import AnimatedSportItem from '../components/AnimatedSportItem';
+import SkeletonView from '../components/SkeletonView';
+import { searchTerrains } from '../services/centres';
+import { useFocusEffect } from '@react-navigation/native';
 const { width, height } = Dimensions.get("window");
 
 export default function HomeScreen(props: any) {
@@ -31,17 +31,19 @@ export default function HomeScreen(props: any) {
     const [user, setUser] = useState<any>();
     const [loading, setLoading] = useState(true);
     const [dbUser, setDbUser] = useState(null);
-    const animation1 = useRef<any>()
-    const animation2 = useRef<any>()
-    const animation3 = useRef<any>()
-    const animation4 = useRef<any>()
-    const loadingAnimation = useRef<any>()
-
+    const [reservations, setReservations] = useState([]);
+    const [reservationLoading, setReservationLoading] = useState(true);
+    const [sportLoading, setSportLoading] = useState(true);
+    const [centerResearchModal, setCenterResearchModal] = useState(false);
+    const [searchText, setSearchText] = useState('');
+    const [searchedCenters, setSearchedCenters] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [centersWithReservationsList, setCentersWithReservationsList] = useState([]);
 
     const styles = StyleSheet.create({
         container: {
             flex: 1,
-            alignItems: 'center',
         },
         imageBackground: {
             paddingTop: 100,
@@ -134,7 +136,8 @@ export default function HomeScreen(props: any) {
             marginTop: 5,
         },
         modalContent: {
-            padding: 20,
+            paddingVertical: 10,
+            marginBottom: 15
         },
         sportItem: {
             marginBottom: 20,
@@ -226,29 +229,67 @@ export default function HomeScreen(props: any) {
         // onCarouselSlideToItem(0)
     }, [])
 
+    useFocusEffect(
+        React.useCallback(() => {
+            // Vérifie si le retour s'est fait depuis ReservationScreen
+            if (props.route.params?.fromReservationScreen) {
+                onLoad();
+
+                // Réinitialisation des paramètres pour éviter une exécution répétée
+                props.navigation.setParams({ fromReservationScreen: undefined });
+            }
+        }, [props.route.params?.fromReservationScreen])
+    );
+
     async function onLoad() {
         setLoading(true);
         setDisplayGooglebtn(false)
+        const centersWithReservations = await getCentersWithReservations();
+            await AsyncStorage.setItem(
+                'centersWithReservations',
+                JSON.stringify(centersWithReservations)
+            )
+
         const userStr = await AsyncStorage.getItem("userInfo")
         if (userStr) {
             const { user } = JSON.parse(userStr)
             setUser(user)
+            
+            setLoading(false);
+            setRefreshing(false);
+            loadLastReservations(user);
             const dbUser = await findClientByEmail(user.email)
             await AsyncStorage.setItem('dbUser', JSON.stringify(dbUser));
             setDbUser(dbUser);
+        }else {
+            setLoading(false);
+            setRefreshing(false);
+            setReservationLoading(false);
         }
 
         try {
+            setSportLoading(true);
             const sportsData = await fetchSportsActivities();
             setSports(sportsData.sports); // Supposons que l'API retourne un objet avec une clé 'sports'
+            setSportLoading(false);
         } catch (error) {
             console.error("Failed to fetch sports activities:", error);
             // Vous devriez gérer l'erreur correctement
         }
+    }
 
-        setTimeout(() => {
-            setLoading(false);
-        }, 1000);
+    async function loadLastReservations(user: any) {
+        console.log(user)
+        console.log("uuuuuuuuuuuuuuuuuuuuuuuuuuu")
+        setReservationLoading(true);
+        if(!user) {
+            setReservations([])
+            setReservationLoading(false);
+            return;
+        }
+        const foundedReservations = await getRecentReservations(user?.email);
+        setReservations(foundedReservations);
+        setReservationLoading(false);
     }
 
     function showSportsModal() {
@@ -268,8 +309,21 @@ export default function HomeScreen(props: any) {
         props.stackNavigation.navigate("Reservation", { activity });
     }
 
-    const renderSportItem = ({ item }: any) => { 
-        console.log(baseUrlPublic + item.image_png)
+    function navigateToReservationDetails(reservationId: number) {
+        props.navigation.navigate("ReservationDetailScreen", { reservationId })
+    }
+
+    async function onSearchCenter() {
+        if (searchText !== '') {
+            setSearchLoading(true);
+            const centers = await searchTerrains(searchText);
+            console.log(centers);
+            setSearchedCenters(centers);
+            setSearchLoading(false);
+        }
+    }
+
+    const renderSportItem = ({ item }: any) => {
         return (
             <TouchableOpacity onPress={() => navigateToReservationScreen(item.nom)} style={styles.sportItem}>
                 <View>
@@ -288,94 +342,165 @@ export default function HomeScreen(props: any) {
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#000" />
-            <ScrollView style={{ flex: 1 }}>
-                <ImageBackground
-                    source={require("../assets/images/tennis-bg.jpeg")}
-                    style={styles.imageBackground}
-                    imageStyle={{ borderBottomLeftRadius: 60, borderBottomRightRadius: 60 }}
-                >
-                    <View style={styles.headerView}>
+            <View style={{ width: '100%', position: 'absolute', top: 40, zIndex: 15, backgroundColor: 'transparent' }}>
+                {
+                    !user ?
+                        <TouchableOpacity onPress={() => setDisplayGooglebtn(true)} style={{ height: 35, width: 35, justifyContent: 'center', alignItems: 'center', position: 'absolute', right: 15, top: 5, backgroundColor: theme.lightGreenTranslucent, borderRadius: 10 }}>
+                            <FontAwesome name="user" size={15} color="#fff" />
+                        </TouchableOpacity> :
+                        <TouchableOpacity onPress={() => navigateToNotifications()} style={{ height: 35, width: 35, justifyContent: 'center', alignItems: 'center', position: 'absolute', right: 15, top: 5, backgroundColor: theme.lightGreenTranslucent, borderRadius: 10 }}>
+                            <FontAwesome name="bell" size={15} color="#fff" />
+                        </TouchableOpacity>
+                }
+            </View>
+            <ScrollView
+                style={{ flex: 1 }}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={loading}
+                        onRefresh={() => {
+                            setRefreshing(true);
+                            onLoad()
+                        }}
+                    />
+                }
+            >
+                <View style={{ width: '100%' }}>
+                    <LinearGradient
+                        colors={['#4e9d68', '#69d29d']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={{
+                            borderBottomEndRadius: 20,
+                            borderBottomStartRadius: 20,
+                            width: '100%',
+                            overflow: 'hidden',
+                            paddingTop: 30
+                        }}>
+                        <ImageBackground source={require('../assets/images/basket-bg.jpg')} imageStyle={{ opacity: .9 }} style={{ flex: 1 }}>
 
-                        {
-                            !user ?
-                                <TouchableOpacity onPress={() => setDisplayGooglebtn(true)} style={{ height: 35, width: 35, justifyContent: 'center', alignItems: 'center', position: 'absolute', right: 20, top: 5, backgroundColor: theme.lightGreenTranslucent, borderRadius: 20 }}>
-                                    <FontAwesome name="user" size={15} color="#fff" />
-                                </TouchableOpacity> :
-                                <TouchableOpacity onPress={() => navigateToNotifications()} style={{ height: 35, width: 35, justifyContent: 'center', alignItems: 'center', position: 'absolute', right: 20, top: 5, backgroundColor: theme.lightGreenTranslucent, borderRadius: 20 }}>
-                                    <FontAwesome name="bell" size={15} color="#fff" />
-                                </TouchableOpacity>
-                        }
-                    </View>
-                    <View style={styles.clubInfoContainer}>
-                        <View style={styles.clubRow}>
-                            <View style={styles.logoContainer}>
-                                <Image
-                                    source={require("../assets/images/logo.png")}
-                                    style={{ height: 50, width: 50, resizeMode: 'contain' }}
-
-                                />
+                            <View style={{ paddingHorizontal: 20, paddingTop: 15, maxWidth: width * .6, opacity: .9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1, position: 'relative', width, height: 240, }}>
+                                <View style={{ maxWidth: width * .6 }}>
+                                    <Text style={{ color: 'rgb(248, 252, 248)', marginTop: 15, fontSize: 22, lineHeight: 31, maxWidth: width * .6, fontWeight: '400' }}>
+                                        <Text style={{}}>Votre prochain défi commence </Text>
+                                        <Text style={{ fontWeight: '900', color: 'rgb(250, 252, 250)' }}>ici !</Text>
+                                    </Text>
+                                </View>
+                                {/* <Image source={require('../assets/images/basket-bg.jpg')} style={{ width: width * .7, height: 240, objectFit: 'contain', position: 'absolute', right: 0 }} /> */}
                             </View>
+                        </ImageBackground>
+                    </LinearGradient>
+                </View>
 
-                            <View style={styles.clubTextContainer}>
-                                <Text style={styles.clubText}>Cotonou Padel Club</Text>
-                            </View>
-                            <FontAwesome5 name="info-circle" size={20} style={styles.infoIcon} />
-                        </View>
-
-                        <View style={styles.actionButtonContainer}>
-                            <TouchableOpacity onPress={showSportsModal} style={{ flexDirection: 'column', width: '23%', backgroundColor: theme.primaryBackground, alignItems: 'center', paddingVertical: 15, justifyContent: 'center', borderRadius: 8, elevation: 5 }}>
-                                <FontAwesome name="calendar-check-o" size={17} color={theme.primary} />
-                                <Text style={{ fontSize: 12, fontWeight: '300', color: theme.primaryText, marginTop: 5 }}>Réserver</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={{ flexDirection: 'column', width: '23%', backgroundColor: theme.primaryBackground, alignItems: 'center', paddingVertical: 15, justifyContent: 'center', borderRadius: 8, elevation: 5 }}>
-                                <FontAwesome5 name="trophy" size={17} color={theme.primary} />
-                                <Text style={{ fontSize: 12, fontWeight: '300', color: theme.primaryText, marginTop: 5 }}>Matchs</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={{ flexDirection: 'column', width: '23%', backgroundColor: theme.primaryBackground, alignItems: 'center', paddingVertical: 15, justifyContent: 'center', borderRadius: 8, elevation: 5 }}>
-                                <FontAwesome name="shopping-cart" size={17} color={theme.primary} />
-                                <Text style={{ fontSize: 12, fontWeight: '300', color: theme.primaryText, marginTop: 5 }}>Boutique</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={{ flexDirection: 'column', width: '23%', backgroundColor: theme.primaryBackground, alignItems: 'center', paddingVertical: 15, justifyContent: 'center', borderRadius: 8, elevation: 5 }}>
-                                <FontAwesome5 name="users" size={17} color={theme.primary} />
-                                <Text style={{ fontSize: 12, fontWeight: '300', color: theme.primaryText, marginTop: 5 }}>Amis</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                </ImageBackground>
-
+                <View style={{ width: '100%', marginTop: -35, justifyContent: 'center', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => setCenterResearchModal(true)} style={{
+                        width: width * .9,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        flexDirection: 'row',
+                        backgroundColor: '#fff',
+                        borderRadius: 20,
+                        elevation: 10
+                    }}>
+                        <Ionicons name="md-search" size={20} color="grey" style={{ padding: 10, marginLeft: 10 }} />
+                        <TextInput
+                            style={{
+                                fontSize: 14,
+                                flex: 1,
+                                paddingVertical: 16,
+                                paddingHorizontal: 10,
+                                color: theme.primary,
+                                fontWeight: '300'
+                            }}
+                            placeholder='Recherchez un centre sportif...'
+                            placeholderTextColor="grey"
+                            editable={false}
+                        />
+                    </TouchableOpacity>
+                </View>
 
                 <View style={{ flex: 1, flexDirection: 'column', width, padding: 15 }}>
 
                     <View>
-                    <Text style={{
-                        fontSize: 16,
-                        fontWeight: 'bold',
-                        marginBottom: 10,
-                        color: theme.primaryText, marginTop: 20
-                    }}>ACTIVITES</Text>
-                    <FlatList
-                            data={sports}
-                            horizontal
-                            keyExtractor={(item: any) => item?.id?.toString()}
-                            contentContainerStyle={styles.modalContent}
-                            renderItem={({item, index}) => {
-                                console.log(item)
-                                return <TouchableOpacity style={{
-                                    height: 60, width: 60, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginHorizontal: 5, backgroundColor: theme.lightGreenTranslucent
-                                }}>
-                                <Image
-                    source={{ uri: baseUrlPublic + item.image_png }}
-                    style={{ height: 30, width: 30 }}
-                />
-                                </TouchableOpacity>
-                            }}
-                        />
+                        <Text style={{
+                            fontSize: 18,
+                            fontWeight: '900',
+                            marginBottom: 10,
+                            color: theme.primaryText, marginTop: 5
+                        }}>Sports</Text>
+                        {
+                            sportLoading ?
+                                <SkeletonView height={50} /> :
+                                <FlatList
+                                    data={sports}
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    keyExtractor={(item: any) => item?.id?.toString()}
+                                    contentContainerStyle={[styles.modalContent, {}]}
+                                    renderItem={({ item, index }) => {
+                                        return <AnimatedSportItem item={item} index={index} theme={theme} navigateToReservationScreen={navigateToReservationScreen} />
+                                    }}
+                                />
+                        }
                     </View>
 
+
+                    {
+                        !reservationLoading && reservations.length > 0 && <View>
+                            <Text style={{
+                                fontSize: 18,
+                                fontWeight: '900',
+                                marginBottom: 10,
+                                color: theme.primaryText, marginTop: 5
+                            }}>Dernières réservations</Text>
+
+                            <View style={{}}>
+                                <FlatList
+                                    data={reservations}
+                                    keyExtractor={(item, index) => index.toString()}
+                                    horizontal
+                                    pagingEnabled
+                                    showsHorizontalScrollIndicator={false}
+                                    renderItem={({ item, index }: any) => {
+                                        return <TouchableOpacity onPress={() => navigateToReservationDetails(item.reservation_id)} style={{ width: (width - 45) / 2, marginRight: !(reservations.length - 1 === index) ? 15 : 0, paddingVertical: 20, paddingHorizontal: 10, position: 'relative', backgroundColor: 'rgb(230, 232, 229)', borderTopLeftRadius: !(index % 2) ? 20 : 0, borderBottomRightRadius: !(index % 2) ? 20 : 0, borderBottomLeftRadius: index % 2 ? 20 : 0, borderTopRightRadius: index % 2 ? 20 : 0 }}>
+                                            <Image
+                                                source={{ uri: baseUrlPublic + item.image_sport.replace("public", "storage") }}
+                                                style={{ height: 20, width: 20, objectFit: 'contain', position: 'absolute', right: 10, top: 10 }}
+                                            />
+                                            <Text style={{ marginTop: 20, fontWeight: '300', color: theme.primaryText, fontSize: 15 }} numberOfLines={2}>{item?.centre_sportif?.nom}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20, width: '100%' }}>
+                                                <Ionicons name="location" size={16} color={theme.primaryText} />
+                                                <Text style={{ fontSize: 11, marginLeft: 5, color: theme.primaryText, fontWeight: '300' }} numberOfLines={1}>{item?.centre_sportif?.adresse}</Text>
+                                            </View>
+
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, width: '100%' }}>
+                                                <AntDesign name="calendar" size={15} color={theme.primaryText} />
+                                                <Text style={{ fontSize: 11, marginLeft: 5, color: theme.primaryText, fontWeight: '300' }}>{item.date_reservation} à {item.heure_debut}</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    }}
+                                />
+
+                            </View>
+                        </View>
+                    }
+                    {
+                        reservationLoading && <View>
+                            <Text style={{
+                                fontSize: 18,
+                                fontWeight: '900',
+                                marginBottom: 10,
+                                color: theme.primaryText, marginTop: 5
+                            }}>Dernières réservations</Text>
+
+                            <View style={{}}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                                    <SkeletonView height={150} width={(width - 70) / 2} containerStyle={{ marginLeft: 0, marginHorizontal: 0, marginRight: 10 }} />
+                                    <SkeletonView height={150} width={(width - 70) / 2} containerStyle={{ marginRight: 0 }} />
+                                </View>
+                            </View>
+                        </View>
+                    }
                     <NewsSection />
 
                     <Text style={{
@@ -409,9 +534,69 @@ export default function HomeScreen(props: any) {
                         />
                     </View>
                 </Modal>
-                <Modal visible={loading}>
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={theme.primary} />
+                <Modal visible={loading} transparent>
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .65)' }}>
+                        <LottieView
+                            source={require("../assets/lotties/loading-2.json")}
+                            autoPlay
+                            loop
+                            style={{ height: 100 }}
+                        />
+                    </View>
+                </Modal>
+ 
+                <Modal
+                    animationType="slide"
+                    visible={centerResearchModal}
+                    onRequestClose={() => setCenterResearchModal(false)}
+                >
+                    <View style={{
+                        flex: 1,
+                        marginTop: 22,
+                    }}>
+                        <View style={{
+                            width: width * .9,
+                            flexDirection: 'row',
+                            backgroundColor: '#fff',
+                            borderRadius: 20,
+                            elevation: 10,
+                            alignSelf: 'center',
+                            alignItems: 'center'
+                        }}>
+                            <Ionicons name="md-search" size={20} color="grey" style={{ padding: 10, marginLeft: 10 }} />
+                            <TextInput
+                                autoFocus
+                                style={{
+                                    fontSize: 14,
+                                    flex: 1,
+                                    paddingVertical: 16,
+                                    paddingHorizontal: 10,
+                                    color: 'grey',
+                                    fontWeight: '300'
+                                }}
+                                placeholder='Recherchez un centre sportif...'
+                                placeholderTextColor="grey"
+                                keyboardType="default"
+                                returnKeyType='search'
+                                value={searchText}
+                                onChangeText={setSearchText}
+                                onSubmitEditing={onSearchCenter}
+                            />
+                        </View>
+
+                        {
+                            searchLoading ? <View style={{ flex: 1, position: 'absolute', top: 0, bottom: 0, right: 0, left: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, .65)' }}>
+                                <LottieView
+                                    source={require("../assets/lotties/loading-2.json")}
+                                    autoPlay
+                                    loop
+                                    style={{ height: 100 }}
+                                />
+                            </View> : <View style={{ flex: 1, paddingVertical: 10 }}>
+
+                            </View>
+                        }
+
                     </View>
                 </Modal>
             </ScrollView>

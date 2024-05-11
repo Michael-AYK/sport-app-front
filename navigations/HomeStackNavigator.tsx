@@ -1,11 +1,13 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { Dimensions, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeTabNavigator from './HomeTabNavigator';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import ReservationScreen from '../screens/ReservationScreen';
 import QRCodeScreen from '../screens/QRCodeScreen';
 import NotificationScreen from '../screens/NotificationScreen';
+import InvitationsScreen from '../screens/InvitationsScreen';
+import ReservationDetailScreen from '../screens/ReservationDetailScreen';
 import { useSelector, useDispatch } from 'react-redux';
 import { setTheme } from '../redux/theme';
 import { storeTheme } from '../utils/themeStorage';
@@ -13,7 +15,7 @@ import lightTheme from '../themes/lightTheme';
 import darkTheme from '../themes/darkTheme';
 
 const Stack = createNativeStackNavigator();
-
+const { width } = Dimensions.get('window');
 function HomeStackNavigator(props: any) {
     const mode = useSelector((state: any) => state.theme);
     const theme = mode === 'light' ? lightTheme : darkTheme;
@@ -38,9 +40,32 @@ function HomeStackNavigator(props: any) {
                 {(props: any) => <NotificationScreen {...props} />}
             </Stack.Screen>
 
+
             <Stack.Screen name="Reservation" component={ReservationScreen} options={{
-                headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700' }}>Faire une réservation</Text>,
+                headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700', maxWidth: width * .6, color: theme.primaryText }}>Faire une réservation</Text>,
                 headerTitleAlign: 'center',
+                headerStyle: {
+                    backgroundColor: theme.primaryBackground,
+                },
+                headerShadowVisible: false,
+                headerTintColor: theme.primaryText
+
+            }} />
+
+            <Stack.Screen name="Invitations" component={InvitationsScreen} options={{
+                headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700' }}>Invitations</Text>,
+                headerTitleAlign: 'center',
+                headerStyle: {
+                    backgroundColor: theme.primaryBackground,
+                },
+                headerShadowVisible: false,
+
+            }} />
+
+            <Stack.Screen name="ReservationDetailScreen" component={ReservationDetailScreen} options={{
+                headerTitle: () => <Text style={{ fontSize: 15, fontWeight: '700' }}>Détails de la réservation</Text>,
+                headerTitleAlign: 'center',
+                headerShown: false,
                 headerStyle: {
                     backgroundColor: theme.primaryBackground,
                 },

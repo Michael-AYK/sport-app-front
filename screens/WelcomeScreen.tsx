@@ -10,7 +10,7 @@ export default function WelcomeScreen(props: any) {
   
   return (
     <LinearGradient
-      colors={['#320993', '#3A0CA3']} // Couleurs du dégradé (du bas vers le haut)
+      colors={['#58AF83', '#58BF93']} // Couleurs du dégradé (du bas vers le haut)
       style={{ flex: 1, backgroundColor: "white" }}>
 
       <ImageBackground

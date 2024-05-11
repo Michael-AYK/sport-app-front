@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, TextInput, FlatList, StyleSheet } from 'react-native';
 import Gravatar from './Gravatar';
 
-const ParticipantsModal = ({ visible, user, availableUsers, onClose, onUpdateParticipants, onNextPress }: any) => {
+const ParticipantsModal = ({ visible, user, availableUsers, onClose, onUpdateParticipants, onNextPress, theme }: any) => {
     const [input, setInput] = useState('');
     const [participants, setParticipants] = useState([user]); // Commence avec l'utilisateur actuel
 
-      // Exclut les participants déjà ajoutés du filtre
-      const filteredUsers = availableUsers.filter((u: any) => {
+    // Exclut les participants déjà ajoutés du filtre
+    const filteredUsers = availableUsers.filter((u: any) => {
         const isAlreadyParticipant = participants.some((p: any) => p.email === u.email);
         return !isAlreadyParticipant &&
-               ((u.nom && u.nom.toLowerCase().includes(input.toLowerCase())) ||
+            ((u.nom && u.nom.toLowerCase().includes(input.toLowerCase())) ||
                 (u.email && u.email.toLowerCase().includes(input.toLowerCase())));
     });
 
@@ -30,12 +30,15 @@ const ParticipantsModal = ({ visible, user, availableUsers, onClose, onUpdatePar
                     <Text style={styles.closeIconText}>✕</Text>
                 </TouchableOpacity>
                 <Text style={styles.title}>Ajouter des participants</Text>
-                <TextInput
-                    placeholder="Nom ou email"
-                    value={input}
-                    onChangeText={setInput}
-                    style={styles.input}
-                />
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        placeholder="Recherchez un nom ou un email"
+                        value={input}
+                        onChangeText={setInput}
+                        style={[styles.input, { flex: 1 }]}
+                    />
+                    <Text style={styles.searchIcon}>🔍</Text>
+                </View>
                 {input.length > 1 && (
                     <View style={styles.suggestionsContainer}>
                         <FlatList
@@ -66,7 +69,7 @@ const ParticipantsModal = ({ visible, user, availableUsers, onClose, onUpdatePar
                 <TouchableOpacity onPress={() => {
                     onClose();
                     onNextPress();
-                }} style={styles.continueButton}>
+                }} style={[styles.continueButton, { backgroundColor: theme.primary }]}>
                     <Text style={styles.continueButtonText}>Continuer</Text>
                 </TouchableOpacity>
             </View>
@@ -80,8 +83,8 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     title: {
-        fontSize: 18,
-        fontWeight: 'bold',
+        fontSize: 16,
+        fontWeight: '500',
         marginBottom: 20,
         marginVertical: 10
     },
@@ -91,14 +94,25 @@ const styles = StyleSheet.create({
         marginVertical: 5,
         marginLeft: 8
     },
-    input: {
-        fontSize: 18,
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'gray',
-        marginBottom: 10,
+        borderColor: '#bbb',
+        marginBottom: 15,
         padding: 10,
-        borderRadius: 5,
+        borderRadius: 8,
     },
+    input: {
+        fontSize: 14,
+        flex: 1, // Assurez-vous que le TextInput remplit l'espace disponible
+    },
+    searchIcon: {
+        marginLeft: 10,
+        fontSize: 20,
+        color: '#bbb',
+    },
+
     suggestionsContainer: {
         maxHeight: 200, // Ajustez cette valeur selon vos besoins
     },
@@ -112,9 +126,8 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     continueButton: {
-        backgroundColor: '#3A0CA3',
-        padding: 15,
-        borderRadius: 5,
+        padding: 18,
+        borderRadius: 8,
         alignItems: 'center',
         position: 'absolute',
         bottom: 15,
@@ -123,13 +136,13 @@ const styles = StyleSheet.create({
     },
     continueButtonText: {
         color: 'white',
-        fontSize: 18,
+        fontWeight: 'bold'
     },
     closeIcon: {
         position: 'absolute',
-        right: 10,
-        top: 10,
-        padding: 15,
+        right: 5,
+        top: 0,
+        padding: 20,
     },
     closeIconText: {
         fontSize: 20,
